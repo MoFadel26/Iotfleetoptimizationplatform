@@ -1,49 +1,50 @@
 import React from 'react';
-import { CheckCircle2, Clock, FileText } from 'lucide-react';
+import { CheckCircle2, Clock, FileText, ExternalLink, Languages } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 
 type Category = 'traffic' | 'delivery' | 'arabic' | 'data';
 type Status = 'implemented' | 'planned';
+type ProofAction = { type: 'route'; path: string } | { type: 'toggleLang' };
 
 interface Regulation {
+  id: number;
   cat: Category;
-  reg: string;
-  ar: string;
-  auth: string;
-  impl: string;
   status: Status;
+  proof: ProofAction;
+  hasNote?: boolean;
 }
 
 const regulations: Regulation[] = [
-  { cat: 'traffic', reg: 'Saudi Traffic Law', ar: 'نظام المرور', auth: 'BOE / SASO', impl: 'Vehicle type attributes (axle count, gross weight) stored in fleet model; routing logic prevents assignment of prohibited road classes per vehicle type.', status: 'implemented' },
-  { cat: 'traffic', reg: 'Driving hours limits', ar: 'حدود ساعات القيادة', auth: 'TGA / PTA', impl: 'Route scheduler enforces 9-hr daily cap and 56-hr weekly cap for commercial drivers; mandatory 45-min rest after 4.5 hrs of continuous driving built into dispatch logic.', status: 'implemented' },
-  { cat: 'traffic', reg: 'Vehicle weight limits', ar: 'حدود الأوزان والأبعاد', auth: 'Roads General Authority', impl: 'Fleet capacity parameters capped at legal axle-weight limits (21–45 tons by axle count); overloaded assignments blocked at route-generation stage.', status: 'implemented' },
-  { cat: 'traffic', reg: 'City-level truck/time bans', ar: 'حظر الشاحنات في ساعات الذروة', auth: 'Municipal authorities', impl: 'Configurable no-go zone polygons and vehicle-class time windows per city; Makkah peak-hour truck ban pre-loaded as default constraint.', status: 'implemented' },
-  { cat: 'delivery', reg: 'TGA Delivery App registration', ar: 'تسجيل التطبيق لدى هيئة النقل', auth: 'TGA', impl: "Platform architecture designed to meet TGA 'Delivery Applications' category requirements; registration process initiated with TGA portal.", status: 'planned' },
-  { cat: 'delivery', reg: 'Driver identity verification', ar: 'التحقق من هوية السائق', auth: 'TGA', impl: "Driver login flow includes facial-recognition identity check before shift start, fulfilling TGA's mandatory verification requirement for delivery apps.", status: 'planned' },
-  { cat: 'delivery', reg: 'National Address requirement', ar: 'اشتراط العنوان الوطني (يناير 2026)', auth: 'TGA / SPL', impl: 'Address capture enforces valid National Address field for all shipments; back-end validates format against SPL/Absher schema before order acceptance.', status: 'implemented' },
-  { cat: 'delivery', reg: 'Parcel delivery licensing', ar: 'ترخيص نقل الطرود البريدية', auth: 'TGA / Postal Regulatory Commission', impl: 'All integrated carriers verified to hold active TGA and postal licenses; platform terms clearly define intermediary (software) role to avoid unlicensed operator liability.', status: 'implemented' },
-  { cat: 'arabic', reg: 'National Arabic Language Policy', ar: 'السياسة الوطنية للغة العربية (قرار 588)', auth: 'Council of Ministers', impl: 'Full Arabic UI across customer app, driver app, and merchant dashboard; all legal texts professionally translated into Arabic as primary language.', status: 'implemented' },
-  { cat: 'arabic', reg: 'ZATCA e-invoicing (Arabic)', ar: 'اشتراط الفاتورة الإلكترونية بالعربية', auth: 'ZATCA', impl: 'All invoices and credit/debit notes generated with Arabic human-readable fields; supports Arabic and Hindi numerals per ZATCA detailed e-invoicing guideline v2.', status: 'implemented' },
-  { cat: 'arabic', reg: 'Basic Law of Governance', ar: 'النظام الأساسي للحكم (المادة 1)', auth: 'BOE', impl: 'Arabic set as primary language system-wide; all official communications, contract terms, and mandatory disclosures available in Arabic before any other language.', status: 'implemented' },
-  { cat: 'arabic', reg: 'Consumer invoice requirements', ar: 'متطلبات فاتورة المستهلك', auth: 'Ministry of Commerce', impl: 'Receipts and order confirmations include Arabic invoice number, business name, date, product description, and total with VAT — aligned with MCI consumer-rights guidance.', status: 'implemented' },
-  { cat: 'data', reg: 'PDPL – data collection & consent', ar: 'نظام حماية البيانات الشخصية – الموافقة', auth: 'SDAIA', impl: 'Explicit consent prompts at onboarding; privacy policy explains processing purposes, legal bases, data-sharing with carriers, retention periods, and data-subject rights under PDPL.', status: 'implemented' },
-  { cat: 'data', reg: 'PDPL – location & courier tracking', ar: 'بيانات الموقع ورصد السائق', auth: 'SDAIA', impl: 'Real-time location data classified as personal data; AES-256 encryption in transit and at rest; role-based access controls; data minimization applied to location history retention.', status: 'implemented' },
-  { cat: 'data', reg: 'PDPL – data subject rights', ar: 'حقوق صاحب البيانات', auth: 'SDAIA / NDMO', impl: 'In-app portal for access, correction, and deletion requests; all requests logged with timestamps for SDAIA audit readiness; 30-day response SLA per PDPL.', status: 'implemented' },
-  { cat: 'data', reg: 'PDPL – cross-border transfer', ar: 'نقل البيانات عبر الحدود', auth: 'SDAIA', impl: 'Cloud hosting adequacy assessment underway; contractual safeguards in place for non-KSA data centers; primary delivery data earmarked for KSA-region hosting.', status: 'planned' },
+  { id: 1,  cat: 'traffic',  status: 'implemented', proof: { type: 'route', path: '/optimization' } },
+  { id: 2,  cat: 'traffic',  status: 'implemented', proof: { type: 'route', path: '/optimization' } },
+  { id: 3,  cat: 'traffic',  status: 'implemented', proof: { type: 'route', path: '/settings' } },
+  { id: 4,  cat: 'traffic',  status: 'implemented', proof: { type: 'route', path: '/fleet' } },
+  { id: 5,  cat: 'delivery', status: 'planned',     proof: { type: 'route', path: '/settings' } },
+  { id: 6,  cat: 'delivery', status: 'planned',     proof: { type: 'route', path: '/settings' }, hasNote: true },
+  { id: 7,  cat: 'delivery', status: 'implemented', proof: { type: 'route', path: '/fleet' } },
+  { id: 8,  cat: 'delivery', status: 'implemented', proof: { type: 'route', path: '/settings' }, hasNote: true },
+  { id: 9,  cat: 'arabic',   status: 'implemented', proof: { type: 'toggleLang' },               hasNote: true },
+  { id: 10, cat: 'arabic',   status: 'implemented', proof: { type: 'route', path: '/analytics' }, hasNote: true },
+  { id: 11, cat: 'arabic',   status: 'implemented', proof: { type: 'toggleLang' },               hasNote: true },
+  { id: 12, cat: 'arabic',   status: 'implemented', proof: { type: 'route', path: '/analytics' }, hasNote: true },
+  { id: 13, cat: 'data',     status: 'implemented', proof: { type: 'route', path: '/settings' }, hasNote: true },
+  { id: 14, cat: 'data',     status: 'implemented', proof: { type: 'route', path: '/fleet' } },
+  { id: 15, cat: 'data',     status: 'implemented', proof: { type: 'route', path: '/settings' }, hasNote: true },
+  { id: 16, cat: 'data',     status: 'planned',     proof: { type: 'route', path: '/settings' }, hasNote: true },
 ];
 
-const categoryStyles: Record<Category, { pill: string; label: string; labelAr: string }> = {
-  traffic: { pill: 'bg-blue-100 text-blue-700', label: 'Traffic', labelAr: 'المرور' },
-  delivery: { pill: 'bg-teal-100 text-teal-700', label: 'Delivery', labelAr: 'التوصيل' },
-  arabic: { pill: 'bg-amber-100 text-amber-700', label: 'Arabic', labelAr: 'العربية' },
-  data: { pill: 'bg-purple-100 text-purple-700', label: 'Data', labelAr: 'البيانات' },
+const categoryStyles: Record<Category, { pill: string; labelKey: string }> = {
+  traffic:  { pill: 'bg-blue-100 text-blue-700',   labelKey: 'compliance.cat.traffic' },
+  delivery: { pill: 'bg-teal-100 text-teal-700',   labelKey: 'compliance.cat.delivery' },
+  arabic:   { pill: 'bg-amber-100 text-amber-700', labelKey: 'compliance.cat.arabic' },
+  data:     { pill: 'bg-purple-100 text-purple-700', labelKey: 'compliance.cat.data' },
 };
 
 type FilterKey = 'all' | Category;
 
 export function CompliancePage() {
-  const { t, isRTL, language } = useLanguage();
+  const { t, isRTL, language, setLanguage } = useLanguage();
   const [filter, setFilter] = React.useState<FilterKey>('all');
 
   const filtered = filter === 'all' ? regulations : regulations.filter(r => r.cat === filter);
@@ -52,12 +53,14 @@ export function CompliancePage() {
   const planned = regulations.filter(r => r.status === 'planned').length;
 
   const filterTabs: { key: FilterKey; labelKey: string }[] = [
-    { key: 'all', labelKey: 'compliance.filter.all' },
-    { key: 'traffic', labelKey: 'compliance.filter.traffic' },
+    { key: 'all',      labelKey: 'compliance.filter.all' },
+    { key: 'traffic',  labelKey: 'compliance.filter.traffic' },
     { key: 'delivery', labelKey: 'compliance.filter.delivery' },
-    { key: 'arabic', labelKey: 'compliance.filter.arabic' },
-    { key: 'data', labelKey: 'compliance.filter.data' },
+    { key: 'arabic',   labelKey: 'compliance.filter.arabic' },
+    { key: 'data',     labelKey: 'compliance.filter.data' },
   ];
+
+  const handleToggleLang = () => setLanguage(language === 'ar' ? 'en' : 'ar');
 
   return (
     <div className={`p-8 ${isRTL ? 'text-right' : ''}`}>
@@ -118,33 +121,49 @@ export function CompliancePage() {
                 <Th isRTL={isRTL}>{t('compliance.col.authority')}</Th>
                 <Th isRTL={isRTL}>{t('compliance.col.implementation')}</Th>
                 <Th isRTL={isRTL}>{t('compliance.col.status')}</Th>
+                <Th isRTL={isRTL}>{t('compliance.col.proof')}</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filtered.map((r, idx) => {
+              {filtered.map((r) => {
                 const cat = categoryStyles[r.cat];
-                const catLabel = language === 'ar' ? cat.labelAr : cat.label;
+                const primaryName = t(`compliance.reg.${r.id}.name`);
+                const authority = t(`compliance.reg.${r.id}.authority`);
+                const implementation = t(`compliance.reg.${r.id}.implementation`);
+                const note = r.hasNote ? t(`compliance.reg.${r.id}.note`) : undefined;
+
                 return (
-                  <tr key={idx} className="hover:bg-gray-50">
+                  <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 align-top">
                       <div className={`flex flex-col gap-2 ${isRTL ? 'items-end' : 'items-start'}`}>
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${cat.pill}`}>
-                          {catLabel}
+                          {t(cat.labelKey)}
                         </span>
                         <div className={isRTL ? 'text-right' : ''}>
-                          <p className="text-sm font-medium text-gray-900">{r.reg}</p>
-                          <p className="text-xs text-gray-500 mt-0.5" dir="rtl">{r.ar}</p>
+                          <p className="text-sm font-medium text-gray-900">{primaryName}</p>
                         </div>
                       </div>
                     </td>
                     <td className={`px-6 py-4 align-top text-sm text-gray-700 ${isRTL ? 'text-right' : ''}`}>
-                      {r.auth}
+                      {authority}
                     </td>
                     <td className={`px-6 py-4 align-top text-sm text-gray-600 max-w-md ${isRTL ? 'text-right' : ''}`}>
-                      {r.impl}
+                      {implementation}
                     </td>
                     <td className="px-6 py-4 align-top">
                       <StatusBadge status={r.status} t={t} />
+                    </td>
+                    <td className="px-6 py-4 align-top">
+                      <ProofButton
+                        proof={r.proof}
+                        label={
+                          r.proof.type === 'toggleLang'
+                            ? t('compliance.proof.toggleLang')
+                            : t('compliance.proof.view')
+                        }
+                        title={note}
+                        onToggleLang={handleToggleLang}
+                      />
                     </td>
                   </tr>
                 );
@@ -154,6 +173,46 @@ export function CompliancePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ProofButton({
+  proof,
+  label,
+  title,
+  onToggleLang,
+}: {
+  proof: ProofAction;
+  label: string;
+  title?: string;
+  onToggleLang: () => void;
+}) {
+  const baseClass =
+    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap';
+
+  if (proof.type === 'toggleLang') {
+    return (
+      <button
+        type="button"
+        onClick={onToggleLang}
+        title={title}
+        className={`${baseClass} bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200`}
+      >
+        <Languages className="w-3.5 h-3.5" />
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      to={proof.path}
+      title={title}
+      className={`${baseClass} bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200`}
+    >
+      <ExternalLink className="w-3.5 h-3.5" />
+      {label}
+    </Link>
   );
 }
 
