@@ -1,5 +1,26 @@
+# Dependencies
 node_modules/
-.env
-.env
+
+# Build output
 build/
 dist/
+
+# Environment variables - never commit secrets
+.env
+.env.local
+.env.*.local
+
+# TLS certificates and private keys - generated locally via mkcert
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
