@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Map, Route, BarChart3, Settings, Truck } from 'lucide-react';
+import { LayoutDashboard, Map, Route, BarChart3, Settings, Truck, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 
 export function DashboardLayout() {
@@ -12,6 +12,7 @@ export function DashboardLayout() {
     { path: '/fleet', icon: Map, label: t('nav.liveFleet') },
     { path: '/optimization', icon: Route, label: t('nav.optimization') },
     { path: '/analytics', icon: BarChart3, label: t('nav.analytics') },
+    { path: '/compliance', icon: ShieldCheck, label: t('nav.compliance') },
     { path: '/settings', icon: Settings, label: t('nav.settings') },
   ];
 

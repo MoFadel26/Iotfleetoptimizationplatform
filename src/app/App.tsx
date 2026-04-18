@@ -7,6 +7,7 @@ import { LiveFleetMapPage } from '@/app/components/dashboard/LiveFleetMapPage';
 import { RouteOptimizationPage } from '@/app/components/dashboard/RouteOptimizationPage';
 import { AnalyticsPage } from '@/app/components/dashboard/AnalyticsPage';
 import { SettingsPage } from '@/app/components/dashboard/SettingsPage';
+import { CompliancePage } from '@/app/components/dashboard/CompliancePage';
 import { DriverHomePage } from '@/app/components/mobile/DriverHomePage';
 import { RouteNavigationPage } from '@/app/components/mobile/RouteNavigationPage';
 import { VehicleStatusPage } from '@/app/components/mobile/VehicleStatusPage';
@@ -74,6 +75,7 @@ function AppInner() {
             <Route path="fleet" element={<LiveFleetMapPage />} />
             <Route path="optimization" element={<RouteOptimizationPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="compliance" element={<CompliancePage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
