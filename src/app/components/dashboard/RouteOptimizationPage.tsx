@@ -1,30 +1,152 @@
-import React from 'react';
-import { Settings, Play, DollarSign, Leaf, Users, CheckCircle2, TrendingDown } from 'lucide-react';
-import { mockOptimizationResults } from '@/app/data/mockData';
+import React, { useRef } from 'react';
+import {
+  Settings, Play, DollarSign, Leaf, Users,
+  CheckCircle2, XCircle, TrendingDown, Truck,
+} from 'lucide-react';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 import { Button } from '@/app/components/ui/button';
 import { toast } from 'sonner';
+
+// ── Types matching optimizer_api.py response ──────────────────────────────────
+
+interface RouteEntry {
+  vehicle: string;
+  vehicle_type: string;
+  route: number[];
+  route_names: string[];
+  distance_km: number;
+  cost_sar: number;
+  co2_kg: number;
+  load_kg: number;
+  capacity_util: number;
+}
+
+interface ApiResult {
+  status: 'success';
+  n_customers: number;
+  n_vehicles: number;
+  baseline: {
+    total_cost_sar: number;
+    total_co2_kg: number;
+    vehicles_used: number;
+    workload_balance: number;
+  };
+  optimized: {
+    total_cost_sar: number;
+    total_co2_kg: number;
+    total_distance_km: number;
+    vehicles_used: number;
+    fleet_utilization: number;
+    workload_balance: number;
+    status: string;
+    solve_time_s: number;
+    routes: Record<string, RouteEntry>;
+  };
+  comparison: {
+    cost_reduction_pct: number;
+    co2_reduction_pct: number;
+    vehicles_baseline: number;
+    vehicles_optimized: number;
+    workload_baseline: number;
+    workload_optimized: number;
+    spec1_met: boolean;
+    spec3_met: boolean;
+    spec2_met: boolean;
+  };
+}
+
+const OPTIMIZER_URL = '/optimizer';
+
+const WEIGHTS = {
+  cost:     { w_cost: 0.7, w_co2: 0.2, w_fairness: 0.1 },
+  co2:      { w_cost: 0.2, w_co2: 0.7, w_fairness: 0.1 },
+  workload: { w_cost: 0.2, w_co2: 0.2, w_fairness: 0.6 },
+};
+
+// ── Small helpers ─────────────────────────────────────────────────────────────
+
+function SpecBadge({ met, label }: { met: boolean; label: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${
+      met ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+    }`}>
+      {met ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+      {label}
+    </span>
+  );
+}
+
+function Counter({
+  value, onChange, min, max,
+}: { value: number; onChange: (n: number) => void; min: number; max: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={() => onChange(Math.max(min, value - 1))}
+        className="w-7 h-7 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center text-sm">−</button>
+      <span className="w-8 text-center text-sm font-semibold text-gray-900">{value}</span>
+      <button onClick={() => onChange(Math.min(max, value + 1))}
+        className="w-7 h-7 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center text-sm">+</button>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function RouteOptimizationPage() {
   const { t, isRTL } = useLanguage();
   const [objective, setObjective] = React.useState<'cost' | 'co2' | 'workload'>('cost');
   const [isOptimizing, setIsOptimizing] = React.useState(false);
-  const [showResults, setShowResults] = React.useState(false);
+  const [nCustomers, setNCustomers] = React.useState(10);
+  const [nVehicles, setNVehicles] = React.useState(5);
+  const [apiResult, setApiResult] = React.useState<ApiResult | null>(null);
+  const [elapsedSec, setElapsedSec] = React.useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleOptimize = () => {
+  const handleOptimize = async () => {
     setIsOptimizing(true);
-    setTimeout(() => { setIsOptimizing(false); setShowResults(true); }, 2000);
+    setElapsedSec(0);
+    timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000);
+
+    try {
+      const res = await fetch(`${OPTIMIZER_URL}/optimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          n_customers: nCustomers,
+          n_vehicles: nVehicles,
+          ...WEIGHTS[objective],
+          time_limit: 60,
+          seed: 42,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+        throw new Error(err.message ?? `HTTP ${res.status}`);
+      }
+      const data: ApiResult = await res.json();
+      setApiResult(data);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('failed to fetch')) {
+        toast.error('Cannot reach optimizer — run: python optimizer_api.py');
+      } else {
+        toast.error(`Optimization failed: ${msg}`);
+      }
+    } finally {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setIsOptimizing(false);
+    }
   };
 
-  const totalCost = mockOptimizationResults.reduce((sum, r) => sum + r.cost, 0);
-  const totalCO2 = mockOptimizationResults.reduce((sum, r) => sum + r.co2, 0);
-  const totalDistance = mockOptimizationResults.reduce((sum, r) => sum + r.distance, 0);
-
   const objectives = [
-    { key: 'cost' as const, icon: DollarSign, label: t('route.costMin'), desc: t('route.costMinDesc'), active: 'border-blue-500 bg-blue-50', iconBg: 'bg-blue-100', iconColor: 'text-blue-700' },
-    { key: 'co2' as const, icon: Leaf, label: t('route.co2Min'), desc: t('route.co2MinDesc'), active: 'border-green-500 bg-green-50', iconBg: 'bg-green-100', iconColor: 'text-green-700' },
-    { key: 'workload' as const, icon: Users, label: t('route.balanced'), desc: t('route.balancedDesc'), active: 'border-purple-500 bg-purple-50', iconBg: 'bg-purple-100', iconColor: 'text-purple-700' },
+    { key: 'cost' as const,     icon: DollarSign, label: t('route.costMin'),    desc: t('route.costMinDesc'),    active: 'border-blue-500 bg-blue-50',   iconBg: 'bg-blue-100',   iconColor: 'text-blue-700'   },
+    { key: 'co2' as const,      icon: Leaf,        label: t('route.co2Min'),     desc: t('route.co2MinDesc'),     active: 'border-green-500 bg-green-50', iconBg: 'bg-green-100',  iconColor: 'text-green-700'  },
+    { key: 'workload' as const, icon: Users,       label: t('route.balanced'),   desc: t('route.balancedDesc'),   active: 'border-purple-500 bg-purple-50',iconBg: 'bg-purple-100', iconColor: 'text-purple-700' },
   ];
+
+  const comp = apiResult?.comparison;
+  const opt  = apiResult?.optimized;
+  const base = apiResult?.baseline;
 
   return (
     <div className={`p-8 ${isRTL ? 'text-right' : ''}`}>
@@ -34,7 +156,8 @@ export function RouteOptimizationPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Controls */}
+
+        {/* ── LEFT PANEL ── */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className={`flex items-center gap-2 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -42,10 +165,12 @@ export function RouteOptimizationPage() {
               <h2 className="text-lg font-semibold text-gray-900">{t('route.configuration')}</h2>
             </div>
 
-            <div className="space-y-3">
+            {/* Objective selector */}
+            <div className="space-y-3 mb-6">
               {objectives.map(({ key, icon: Icon, label, desc, active, iconBg, iconColor }) => (
                 <button key={key} onClick={() => setObjective(key)}
-                  className={`w-full p-4 rounded-lg border-2 transition-all ${isRTL ? 'text-right' : 'text-left'} ${objective === key ? active : 'border-gray-200 hover:border-gray-300'}`}>
+                  className={`w-full p-4 rounded-lg border-2 transition-all ${isRTL ? 'text-right' : 'text-left'} ${
+                    objective === key ? active : 'border-gray-200 hover:border-gray-300'}`}>
                   <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${objective === key ? iconBg : 'bg-gray-100'}`}>
                       <Icon className={`w-5 h-5 ${objective === key ? iconColor : 'text-gray-700'}`} />
@@ -59,29 +184,45 @@ export function RouteOptimizationPage() {
               ))}
             </div>
 
+            {/* Fleet parameters */}
+            <div className="border-t border-gray-100 pt-5 mb-6 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Fleet Parameters</h3>
+              <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <span className="text-sm text-gray-600">Customers</span>
+                <Counter value={nCustomers} onChange={setNCustomers} min={5} max={15} />
+              </div>
+              <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <span className="text-sm text-gray-600">Vehicles</span>
+                <Counter value={nVehicles} onChange={setNVehicles} min={2} max={8} />
+              </div>
+              <p className="text-xs text-gray-400 pt-1">Solver limit: 60 s · up to 15 customers</p>
+            </div>
+
             <Button
-              variant="default"
-              size="lg"
-              onClick={handleOptimize}
-              disabled={isOptimizing}
-              className="w-full mt-6 transition-colors duration-150"
+              variant="default" size="lg"
+              onClick={handleOptimize} disabled={isOptimizing}
+              className="w-full transition-colors duration-150"
             >
               {isOptimizing ? (
-                <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>{t('route.optimizing')}</>
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Optimizing… ({elapsedSec}s)
+                </>
               ) : (
                 <><Play className="w-5 h-5" />{t('route.runOptimization')}</>
               )}
             </Button>
           </div>
 
+          {/* Summary */}
           <div className="bg-gray-50 rounded-lg border border-gray-200 p-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">{t('route.fleetSummary')}</h3>
             <div className="space-y-2 text-sm text-gray-600">
               {[
-                { label: t('optimization.fleetSize'), value: `6 ${t('route.vehicles')}` },
-                { label: t('optimization.activeRoutes'), value: `3 ${t('route.routes')}` },
-                { label: t('optimization.algorithm'), value: t('optimization.geneticAlgorithm') },
-                { label: `${t('route.solveTime')}:`, value: '2s' },
+                { label: t('optimization.fleetSize'),   value: opt ? `${opt.vehicles_used}/${nVehicles} active` : `${nVehicles} configured` },
+                { label: t('optimization.algorithm'),   value: 'MILP (PuLP/CBC)' },
+                { label: t('route.solveTime'),           value: opt ? `${opt.solve_time_s}s` : '—' },
+                { label: 'Solver status:',               value: opt ? opt.status : '—' },
               ].map(({ label, value }) => (
                 <div key={label} className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <span>{label}</span>
@@ -92,79 +233,103 @@ export function RouteOptimizationPage() {
           </div>
         </div>
 
-        {/* Results */}
+        {/* ── RIGHT PANEL ── */}
         <div className="lg:col-span-2">
-          {!showResults ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center h-full flex items-center justify-center">
-              <div>
-                <Settings className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">{t('route.waitingTitle')}</h3>
-                <p className="text-gray-600">{t('route.waitingDesc')}</p>
+          {isOptimizing ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-12 flex flex-col items-center justify-center gap-4 min-h-80">
+              <div className="w-14 h-14 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <div className="text-center">
+                <p className="text-lg font-medium text-gray-900">Running MILP Optimizer…</p>
+                <p className="text-sm text-gray-500 mt-1">Elapsed: {elapsedSec}s · Solve limit: 60s</p>
+                <p className="text-xs text-gray-400 mt-2">{nCustomers} customers · {nVehicles} vehicles</p>
               </div>
             </div>
-          ) : (
+
+          ) : !apiResult ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-12 flex flex-col items-center justify-center gap-4 min-h-80">
+              <Settings className="w-16 h-16 text-gray-300" />
+              <div className="text-center">
+                <h3 className="text-lg font-medium text-gray-900 mb-1">{t('route.waitingTitle')}</h3>
+                <p className="text-gray-500 text-sm mb-3">{t('route.waitingDesc')}</p>
+                <p className="text-xs text-gray-400">
+                  Requires Python server:&nbsp;
+                  <code className="bg-gray-100 px-1 py-0.5 rounded">python optimizer_api.py</code>
+                </p>
+              </div>
+            </div>
+
+          ) : comp && opt && base ? (
             <div className="space-y-6">
+
+              {/* Before → After cards */}
               <div className="grid grid-cols-3 gap-4">
-                {[
-                  { icon: TrendingDown, label: t('route.totalCost'), value: totalCost.toLocaleString(), suffix: ' SAR', color: 'text-blue-600', trend: '↓ 12%' },
-                  { icon: Leaf, label: t('route.totalEmissions'), value: totalCO2.toFixed(1), suffix: ' kg', color: 'text-green-600', trend: '↓ 18%' },
-                  { icon: CheckCircle2, label: t('route.results'), value: totalDistance.toFixed(1), suffix: ' km', color: 'text-purple-600', trend: '↓ 15%' },
-                ].map(({ icon: Icon, label, value, suffix, color, trend }) => (
+                {([
+                  { icon: TrendingDown, label: 'Cost (SAR)',    before: base.total_cost_sar, after: opt.total_cost_sar, pct: comp.cost_reduction_pct, met: comp.spec1_met, spec: 'Spec 1 ≥15%', color: 'text-blue-600' },
+                  { icon: Leaf,         label: 'CO₂ (kg)',      before: base.total_co2_kg,   after: opt.total_co2_kg,   pct: comp.co2_reduction_pct,  met: comp.spec3_met, spec: 'Spec 3 ≥10%', color: 'text-green-600' },
+                  { icon: Truck,        label: 'Vehicles used', before: base.vehicles_used,  after: opt.vehicles_used,  pct: null,                    met: comp.spec2_met, spec: 'Spec 2',      color: 'text-purple-600' },
+                ] as const).map(({ icon: Icon, label, before, after, pct, met, spec, color }) => (
                   <div key={label} className="bg-white rounded-lg border border-gray-200 p-4">
-                    <div className={`flex items-center gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
                       <Icon className={`w-4 h-4 ${color}`} />
-                      <p className="text-xs text-gray-600">{label}</p>
+                      <p className="text-xs text-gray-500">{label}</p>
                     </div>
-                    <p className="text-2xl font-semibold text-gray-900">{value}{suffix}</p>
-                    <p className="text-xs text-green-600 mt-1">{trend}</p>
+                    <p className="text-xs text-gray-400">{before} → <span className="text-gray-900 font-semibold">{after}</span></p>
+                    <p className={`text-xl font-bold mt-1 ${met ? 'text-green-600' : 'text-amber-500'}`}>
+                      {pct !== null ? `↓ ${pct}%` : (after > before ? `+${after - before}` : String(after))}
+                    </p>
+                    <div className="mt-1"><SpecBadge met={met} label={spec} /></div>
                   </div>
                 ))}
               </div>
 
+              {/* Workload + solve time */}
+              <div className="bg-white rounded-lg border border-gray-200 px-5 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Workload balance</p>
+                  <p className="text-xs text-gray-500">{base.workload_balance} → <span className="font-semibold text-gray-900">{opt.workload_balance}</span> (higher = better)</p>
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  <p>Solved in <span className="font-semibold text-gray-900">{opt.solve_time_s}s</span></p>
+                  <p>Status: <span className="font-semibold text-green-700">{opt.status}</span></p>
+                  <p>{apiResult.n_customers} customers · {apiResult.n_vehicles} vehicles</p>
+                </div>
+              </div>
+
+              {/* Per-vehicle routes */}
               <div className="bg-white rounded-lg border border-gray-200">
-                <div className="p-6 border-b border-gray-200">
+                <div className="p-5 border-b border-gray-200">
                   <h2 className="text-lg font-semibold text-gray-900">{t('route.results')}</h2>
                 </div>
-                <div className="divide-y divide-gray-200">
-                  {mockOptimizationResults.map((route) => (
-                    <div key={route.routeId} className="p-6 hover:bg-gray-50">
-                      <div className={`flex items-start justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <div className={isRTL ? 'text-right' : ''}>
-                          <h3 className="text-sm font-semibold text-gray-900 mb-1">{route.routeId}</h3>
-                          <p className="text-sm text-gray-600">{route.driverName} • {route.vehicleId}</p>
+                <div className="divide-y divide-gray-100">
+                  {Object.entries(opt.routes).map(([vid, r]) => (
+                    <div key={vid} className="p-5 hover:bg-gray-50">
+                      <div className={`flex items-center justify-between mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <span className="text-sm font-semibold text-gray-900">{r.vehicle}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                            r.vehicle_type === 'EV'     ? 'bg-green-100 text-green-700' :
+                            r.vehicle_type === 'Hybrid' ? 'bg-blue-100 text-blue-700'  :
+                                                          'bg-gray-100 text-gray-700'
+                          }`}>{r.vehicle_type}</span>
                         </div>
-                        <div className={isRTL ? 'text-left' : 'text-right'}>
-                          <p className="text-sm font-medium text-gray-900">{route.stops} {t('route.stops')}</p>
-                          <p className="text-xs text-gray-500">{route.distance.toFixed(1)} km</p>
-                        </div>
+                        <span className="text-xs text-gray-500">{r.distance_km} km</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        {[
-                          { label: t('route.totalCost'), value: `${route.cost} SAR` },
-                          { label: 'CO₂', value: `${route.co2.toFixed(1)} kg` },
-                          { label: t('analytics.efficiency'), value: 'High', valueClass: 'text-green-700' },
-                        ].map(({ label, value, valueClass }) => (
-                          <div key={label}>
-                            <p className="text-xs text-gray-500 mb-1">{label}</p>
-                            <p className={`text-sm font-medium ${valueClass || 'text-gray-900'}`}>{value}</p>
-                          </div>
-                        ))}
+                      <p className="text-xs text-gray-400 font-mono mb-3">{r.route.join(' → ')}</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div><p className="text-xs text-gray-500">Cost</p><p className="text-sm font-medium text-gray-900">{r.cost_sar} SAR</p></div>
+                        <div><p className="text-xs text-gray-500">CO₂</p><p className="text-sm font-medium text-gray-900">{r.co2_kg} kg</p></div>
+                        <div><p className="text-xs text-gray-500">Load</p><p className="text-sm font-medium text-gray-900">{r.load_kg} kg ({r.capacity_util}%)</p></div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <Button variant="default" size="lg" onClick={handleOptimize} className="flex-1 transition-colors duration-150">
-                  {t('home.runOptimization')}
-                </Button>
-                <Button variant="outline" size="lg" onClick={() => toast(t('home.reportComingSoon'))} className="transition-colors duration-150">
-                  {t('analytics.export')}
-                </Button>
-              </div>
+              <Button variant="default" size="lg" onClick={handleOptimize} className="w-full">
+                <Play className="w-5 h-5" /> Re-run Optimization
+              </Button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

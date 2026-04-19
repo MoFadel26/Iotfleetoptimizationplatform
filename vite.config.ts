@@ -16,6 +16,13 @@ export default defineConfig({
       key: fs.readFileSync(path.resolve(__dirname, 'key.pem')),
       cert: fs.readFileSync(path.resolve(__dirname, 'cert.pem')),
     },
+    proxy: {
+      '/optimizer': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/optimizer/, ''),
+      },
+    },
   },
   resolve: {
     alias: {
