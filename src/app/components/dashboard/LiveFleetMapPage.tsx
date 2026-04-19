@@ -517,7 +517,29 @@ export function LiveFleetMapPage() {
         <div className={`bg-white overflow-y-auto flex-shrink-0 ${isRTL ? 'border-r' : 'border-l'} border-gray-200 flex flex-col transition-all duration-300 ${sidebarOpen ? 'w-80' : 'w-0 overflow-hidden border-0'}`}>
 
           {/* Selected vehicle detail */}
-          {selectedVehicle && (
+          {selectedVehicleId === 'EV-02' && (
+            <div className="p-4 border-b border-blue-100 bg-blue-50 flex-shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-blue-900">EV-02 — Live IoT</h3>
+                <button onClick={() => { setSelectedVehicleId(null); applySoloMode(null); if (routePolylineRef.current) routePolylineRef.current.setStyle({ opacity: 0.9 }); }} className="text-xs text-blue-400 hover:text-blue-600">✕ Show all</button>
+              </div>
+              {data ? (
+                <div className="space-y-1 text-xs text-blue-900">
+                  <p><span className="text-blue-500">Speed:</span> {data.speed.toFixed(1)} km/h</p>
+                  <p><span className="text-blue-500">Motion:</span> {data.motion}</p>
+                  <p><span className="text-blue-500">Temp:</span> {data.temp.toFixed(1)}°C <span className={`ml-1 px-1 rounded font-semibold ${data.temp_status === 'TOO HOT' ? 'bg-red-100 text-red-700' : data.temp_status === 'WARM' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{data.temp_status}</span></p>
+                  <p><span className="text-blue-500">Humidity:</span> {data.humidity.toFixed(1)}%</p>
+                  <p><span className="text-blue-500">Altitude:</span> {data.altitude.toFixed(1)} m</p>
+                  <p><span className="text-blue-500">GPS:</span> {data.gps_status} · {data.satellites} sats</p>
+                  <p><span className="text-blue-500">Coords:</span> {data.lat.toFixed(5)}, {data.lon.toFixed(5)}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">Device offline — connect the ESP32 to see live data</p>
+              )}
+            </div>
+          )}
+
+          {selectedVehicleId !== 'EV-02' && selectedVehicle && (
             <div className="p-4 border-b border-blue-100 bg-blue-50 flex-shrink-0">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-blue-900">{selectedVehicle.name}</h3>
@@ -599,6 +621,37 @@ export function LiveFleetMapPage() {
               </div>
             ) : (
               <div className="space-y-2">
+                {/* EV-02 — always shown first as the live IoT vehicle */}
+                <button
+                  onClick={() => {
+                    setSelectedVehicleId('EV-02');
+                    const lat = data?.lat ?? DEPOT_LAT;
+                    const lon = data?.lon ?? DEPOT_LON;
+                    panTo(lat, lon);
+                    // Show EV-02's route (routePolylineRef) and hide optimizer routes
+                    vehiclePolylinesRef.current.forEach(poly => poly.setStyle({ opacity: 0, weight: 0 }));
+                    vehicleMarkersRef.current.forEach(markers => markers.forEach(m => m.setOpacity(0)));
+                    if (routePolylineRef.current) routePolylineRef.current.setStyle({ opacity: 0.9 });
+                  }}
+                  className={`w-full ${isRTL ? 'text-right' : 'text-left'} p-3 rounded-lg border transition-colors ${
+                    selectedVehicleId === 'EV-02' ? 'border-blue-500 bg-blue-50' : 'border-blue-200 bg-blue-50/40 hover:border-blue-400'
+                  }`}
+                >
+                  <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <Battery className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-gray-900">EV-02</span>
+                    {isConnected
+                      ? <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-blue-600 text-white">● {t('iot.liveIndicator')}</span>
+                      : <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-500">offline</span>
+                    }
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Mohammed Al-Saud</p>
+                  {data
+                    ? <p className="text-xs text-blue-600 mt-0.5">{data.speed.toFixed(1)} km/h · {data.motion}</p>
+                    : <p className="text-xs text-gray-400 mt-0.5">Device disconnected</p>
+                  }
+                </button>
+
                 {fleetRoutes?.vehicles.map((v, idx) => {
                   const driverName = DRIVER_NAMES[idx] ?? 'Driver';
                   const isSelected = selectedVehicleId === v.id;
