@@ -1,18 +1,25 @@
 """
 Multi-Objective VRP Optimizer — Flask API
 Run:  python optimizer_api.py
-Deps: pip install flask flask-cors pulp numpy pymongo python-dotenv
+Deps: pip install flask flask-cors pulp numpy pymongo python-dotenv requests
 """
+
+import os
+import logging
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pulp
 import numpy as np
 import math, time, warnings
+import requests
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 
 from db import areas_col, vehicles_col, depot_col, config_col, runs_col
+
+load_dotenv()
 
 warnings.filterwarnings("ignore")
 
@@ -600,7 +607,76 @@ def list_runs():
     return jsonify(docs)
 
 
+# ── HERE GEOCODING PROXY ──────────────────────────────────────────────────────
+# Server-side proxy to the HERE Geocoding API. Keeps HERE_API_KEY off the client.
+# Accepts full KSA addresses or Saudi short addresses (e.g. "RCTB4359").
+
+HERE_GEOCODE_URL = "https://geocode.search.hereapi.com/v1/geocode"
+_geocode_log = logging.getLogger("geocode")
+
+
+def _here_request(query: str, api_key: str, timeout: float = 5.0):
+    return requests.get(
+        HERE_GEOCODE_URL,
+        params={"q": query, "apiKey": api_key, "in": "countryCode:SAU"},
+        timeout=timeout,
+    )
+
+
+@app.route('/geocode', methods=['GET'])
+@app.route('/api/geocode', methods=['GET'])
+def geocode():
+    query = (request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'error': 'empty_query'}), 400
+
+    api_key = os.environ.get('HERE_API_KEY', '').strip()
+    if not api_key:
+        return jsonify({'error': 'missing_api_key'}), 500
+
+    # One retry on transient failure (timeout / 5xx / connection error).
+    last_err = None
+    for attempt in range(2):
+        try:
+            res = _here_request(query, api_key)
+            if res.status_code >= 500:
+                last_err = f'here_status_{res.status_code}'
+                continue
+            if res.status_code != 200:
+                _geocode_log.warning("HERE returned %s for query=%r", res.status_code, query)
+                return jsonify({'error': f'here_status_{res.status_code}'}), 502
+            data = res.json()
+            items = data.get('items') or []
+            if not items:
+                return jsonify({'error': 'address_not_found'}), 404
+
+            it = items[0]
+            pos = it.get('position') or {}
+            addr = it.get('address') or {}
+            return jsonify({
+                'title':            it.get('title'),
+                'formatted_address': addr.get('label'),
+                'latitude':         pos.get('lat'),
+                'longitude':        pos.get('lng'),
+                'country_code':     addr.get('countryCode'),
+                'city':             addr.get('city'),
+                'district':         addr.get('district'),
+                'street':           addr.get('street'),
+                'house_number':     addr.get('houseNumber'),
+                'postal_code':      addr.get('postalCode'),
+                'result_type':      it.get('resultType'),
+                'query_score':      (it.get('scoring') or {}).get('queryScore'),
+                'raw_response':     it,
+            })
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_err = type(e).__name__
+            continue
+
+    _geocode_log.warning("HERE geocoding failed for query=%r: %s", query, last_err)
+    return jsonify({'error': 'upstream_unavailable', 'detail': last_err}), 504
+
+
 if __name__ == '__main__':
     print("VRP Optimizer API — http://localhost:5001")
-    print("Install:  pip install flask flask-cors pulp numpy pymongo python-dotenv")
+    print("Install:  pip install flask flask-cors pulp numpy pymongo python-dotenv requests")
     app.run(host='0.0.0.0', port=5001, debug=False)

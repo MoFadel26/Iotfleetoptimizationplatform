@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import { toast } from 'sonner';
-import { MapPin, CheckCircle2, Clock, AlertTriangle, Package, RefreshCw, Inbox } from 'lucide-react';
+import { MapPin, CheckCircle2, Clock, AlertTriangle, Package, Inbox } from 'lucide-react';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 import { useIoT } from '@/app/context/IoTContext';
 import {
@@ -90,11 +90,8 @@ export function RouteNavigationPage() {
     recalcTimeMs,
     hasRecalculated,
     setHasRecalculated,
-    manualRecalcTick,
-    triggerManualRecalc,
   } = useIoT();
 
-  const [isRouting, setIsRouting] = useState(false);
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [deliveredIds, setDeliveredIds] = useState<Set<number>>(new Set());
   const [delayDialogOpen, setDelayDialogOpen] = useState(false);
@@ -112,7 +109,6 @@ export function RouteNavigationPage() {
   const stopMarkersRef = useRef<L.Marker[]>([]);
   const prevPathRef = useRef<LatLng[] | null>(null);
   const prevIsRecalcRef = useRef(false);
-  const prevManualRecalcTickRef = useRef(manualRecalcTick);
   const routingTokenRef = useRef(0);
   const activeStopsRef = useRef<RouteStop[]>([]);
 
@@ -151,7 +147,6 @@ export function RouteNavigationPage() {
   const computeRoute = useCallback(async (lat: number, lon: number, asRecalc: boolean) => {
     if (!mapRef.current) return;
     const token = ++routingTokenRef.current;
-    setIsRouting(true);
     const remaining = activeStopsRef.current.filter(s => !deliveredIds.has(s.id));
     const waypoints: LatLng[] = [[lat, lon], ...remaining.map(s => [s.lat, s.lon] as LatLng)];
 
@@ -159,7 +154,7 @@ export function RouteNavigationPage() {
       ? await fetchAlternateStreetRoute(waypoints, prevPathRef.current, 5)
       : await fetchStreetRoute(waypoints);
 
-    if (token !== routingTokenRef.current || !mapRef.current) { setIsRouting(false); return; }
+    if (token !== routingTokenRef.current || !mapRef.current) return;
 
     const prev = routePolylineRef.current;
     if (prev) { prev.setStyle({ opacity: 0 }); setTimeout(() => prev.remove(), 500); }
@@ -173,7 +168,6 @@ export function RouteNavigationPage() {
 
     prevPathRef.current = path;
     if (asRecalc) setHasRecalculated(true);
-    setIsRouting(false);
   }, [setHasRecalculated, deliveredIds]);
 
   // Init map
@@ -240,13 +234,6 @@ export function RouteNavigationPage() {
     computeRoute(data?.lat ?? depotLat, data?.lon ?? depotLon, true);
   }, [isRecalculating, data, computeRoute, depotLat, depotLon]);
 
-  // Manual recalc
-  useEffect(() => {
-    if (manualRecalcTick === prevManualRecalcTickRef.current) return;
-    prevManualRecalcTickRef.current = manualRecalcTick;
-    computeRoute(data?.lat ?? depotLat, data?.lon ?? depotLon, true);
-  }, [manualRecalcTick, data, computeRoute, depotLat, depotLon]);
-
   const speedColor = !data ? 'text-gray-500' :
     data.speed > 90 ? 'text-red-600' :
     data.speed >= 60 ? 'text-amber-600' : 'text-green-600';
@@ -276,13 +263,6 @@ export function RouteNavigationPage() {
             Loading Riyadh route…
           </div>
         )}
-
-        <button onClick={() => triggerManualRecalc()} disabled={isRouting}
-          className="absolute top-3 right-3 bg-white text-blue-700 border border-blue-200 shadow-md rounded-lg px-3 py-2 text-xs font-semibold flex items-center gap-1.5 hover:bg-blue-50 disabled:opacity-60 transition-colors"
-          style={{ zIndex: 1000 }}>
-          <RefreshCw className={`w-3.5 h-3.5 ${isRouting ? 'animate-spin' : ''}`} />
-          {isRouting ? t('fleet.routing') : t('fleet.recalculate')}
-        </button>
 
         {/* Legend */}
         <div className="absolute bottom-2 left-2 bg-white/95 border border-gray-200 shadow-md rounded-md px-2 py-1.5 text-[10px] text-gray-700" style={{ zIndex: 1000 }}>

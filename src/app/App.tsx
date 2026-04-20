@@ -8,6 +8,7 @@ import { RouteOptimizationPage } from '@/app/components/dashboard/RouteOptimizat
 import { AnalyticsPage } from '@/app/components/dashboard/AnalyticsPage';
 import { SettingsPage } from '@/app/components/dashboard/SettingsPage';
 import { CompliancePage } from '@/app/components/dashboard/CompliancePage';
+import { RouteTestPage } from '@/app/components/dashboard/RouteTestPage';
 import { DriverHomePage } from '@/app/components/mobile/DriverHomePage';
 import { RouteNavigationPage } from '@/app/components/mobile/RouteNavigationPage';
 import { VehicleStatusPage } from '@/app/components/mobile/VehicleStatusPage';
@@ -61,6 +62,7 @@ function AppInner() {
             <Route path="optimization" element={<RouteOptimizationPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="compliance" element={<CompliancePage />} />
+            <Route path="test" element={<RouteTestPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

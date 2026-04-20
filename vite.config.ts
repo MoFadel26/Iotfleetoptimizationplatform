@@ -22,6 +22,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/optimizer/, ''),
       },
+      '/api': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
       '/iot-device': {
         target: 'http://172.20.10.6',
         changeOrigin: true,
