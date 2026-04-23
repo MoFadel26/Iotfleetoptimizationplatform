@@ -11,34 +11,30 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  server: {
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, 'key.pem')),
-      cert: fs.readFileSync(path.resolve(__dirname, 'cert.pem')),
+  server: {},
+  proxy: {
+    '/optimizer': {
+      target: 'http://localhost:5001',
+      changeOrigin: true,
+      rewrite: (p) => p.replace(/^\/optimizer/, ''),
     },
-    proxy: {
-      '/optimizer': {
-        target: 'http://localhost:5001',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/optimizer/, ''),
-      },
-      '/api': {
-        target: 'http://localhost:5001',
-        changeOrigin: true,
-      },
-      '/iot-device': {
-        target: 'http://172.20.10.6',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/iot-device/, ''),
-      },
+    '/api': {
+      target: 'http://localhost:5001',
+      changeOrigin: true,
+    },
+    '/iot-device': {
+      target: 'http://172.20.10.6',
+      changeOrigin: true,
+      rewrite: (p) => p.replace(/^\/iot-device/, ''),
     },
   },
+},
   resolve: {
-    alias: {
-      // Alias @ to the src directory
-      '@': path.resolve(__dirname, './src'),
-    },
+  alias: {
+    // Alias @ to the src directory
+    '@': path.resolve(__dirname, './src'),
   },
+},
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
