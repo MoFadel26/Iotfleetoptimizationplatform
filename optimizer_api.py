@@ -518,6 +518,132 @@ def optimize():
     return ok(payload)
 
 
+# NEW endpoint — caller-supplied coordinates (no areas_col, no RNG sampling).
+# Request:  {"depot":{lat,lng,name}, "customers":[{lat,lng,name},...] (1..10),
+#            "n_vehicles":int (1..6, ≤len(customers)),
+#            "w_cost"?,"w_co2"?,"w_fairness"? (defaults 0.5/0.3/0.2)}
+# Success 200: ok({"routes": {"<k>": {"vehicle","stops":[{lat,lng,name},...],"distance_km"}}})
+# Error   400: err("invalid_input", "<msg>", 400)
+# Error   500: err("solver_failed"|"no_vehicles", "<msg>", 500)
+@app.route('/api/optimize-custom', methods=['POST'])
+def optimize_custom():
+    body = request.json or {}
+
+    # ── Validate depot ──
+    depot_in = body.get('depot')
+    if not isinstance(depot_in, dict):
+        return err('invalid_input', 'Missing "depot" object.', 400)
+    try:
+        depot_lat = float(depot_in['lat'])
+        depot_lng = float(depot_in['lng'])
+    except (KeyError, TypeError, ValueError):
+        return err('invalid_input', 'Depot must have numeric "lat" and "lng".', 400)
+    depot_name = str(depot_in.get('name') or 'Depot')
+
+    # ── Validate customers ──
+    customers_in = body.get('customers')
+    if not isinstance(customers_in, list) or len(customers_in) == 0:
+        return err('invalid_input', '"customers" must be a non-empty array.', 400)
+    if len(customers_in) > 10:
+        return err('invalid_input', 'At most 10 customers are allowed.', 400)
+
+    parsed_customers = []
+    for idx, c in enumerate(customers_in):
+        if not isinstance(c, dict):
+            return err('invalid_input', f'Customer {idx} must be an object.', 400)
+        try:
+            parsed_customers.append({
+                'lat':  float(c['lat']),
+                'lng':  float(c['lng']),
+                'name': str(c.get('name') or f'Customer {idx + 1}'),
+            })
+        except (KeyError, TypeError, ValueError):
+            return err('invalid_input', f'Customer {idx} must have numeric "lat" and "lng".', 400)
+
+    # ── Validate n_vehicles ──
+    try:
+        n_vehicles = int(body.get('n_vehicles', 1))
+    except (TypeError, ValueError):
+        return err('invalid_input', '"n_vehicles" must be an integer.', 400)
+    if n_vehicles < 1 or n_vehicles > 6:
+        return err('invalid_input', '"n_vehicles" must be between 1 and 6.', 400)
+    if n_vehicles > len(parsed_customers):
+        return err('invalid_input', '"n_vehicles" cannot exceed the number of customers.', 400)
+
+    w_cost     = float(body.get('w_cost',     0.5))
+    w_co2      = float(body.get('w_co2',      0.3))
+    w_fairness = float(body.get('w_fairness', 0.2))
+
+    # ── Build Location objects directly from the supplied lat/lng ──
+    # Realistic defaults for fields the caller doesn't supply.
+    depot = Location(
+        id=0, name=depot_name, lat=depot_lat, lon=depot_lng,
+        time_window_start=300.0, time_window_end=1380.0,
+    )
+    locations = [depot]
+    for i, c in enumerate(parsed_customers):
+        locations.append(Location(
+            id=i + 1, name=c['name'], lat=c['lat'], lon=c['lng'],
+            demand=50.0, service_time=10.0,
+            time_window_start=480.0,    # 08:00
+            time_window_end=1080.0,     # 18:00
+            priority=1,
+        ))
+
+    # ── Pick vehicles using the same DB lookup as generate_data() ──
+    specs = load_vehicle_specs()
+    if not specs:
+        return err('no_vehicles', 'No active vehicles configured.', 500)
+    vehicles = []
+    for i in range(n_vehicles):
+        spec = specs[i % len(specs)]
+        vehicles.append(Vehicle(
+            id=i,
+            name=spec["name"],
+            vehicle_type=spec["vehicle_type"],
+            capacity=spec["capacity"],
+            cost_per_km=spec["cost_per_km"],
+            co2_per_km=spec["co2_per_km"],
+            max_range=spec["max_range"],
+            max_shift_hours=spec.get("max_shift_hours", 8.0),
+            # speed_kmh omitted → uses Vehicle dataclass default (40.0).
+        ))
+
+    # ── Reuse the exact same solver that /optimize uses ──
+    default_cfg = load_default_config()
+    config = OptimizationConfig(
+        w_cost=w_cost, w_co2=w_co2, w_fairness=w_fairness,
+        time_limit_seconds=default_cfg.time_limit_seconds,
+        solver_gap=default_cfg.solver_gap,
+        cost_reduction_target=default_cfg.cost_reduction_target,
+        co2_reduction_target=default_cfg.co2_reduction_target,
+    )
+    optimizer = FleetOptimizer(locations, vehicles, config)
+    result = optimizer.solve()
+
+    if result.get('status') not in ('Optimal', 'Feasible'):
+        return err('solver_failed', result.get('error', 'Solver failed'), 500)
+
+    # ── Trim to what RouteTestPage needs (no cost/co2/comparison blocks) ──
+    trimmed_routes = {}
+    for k, r in result['routes'].items():
+        ordered_stops = [
+            {
+                'lat':  locations[i].lat,
+                'lng':  locations[i].lon,
+                'name': locations[i].name,
+            }
+            for i in r['route'] if i != 0
+        ]
+        trimmed_routes[k] = {
+            'vehicle':     r['vehicle'],
+            'stops':       ordered_stops,
+            'distance_km': r['distance_km'],
+        }
+
+    return ok(to_json_safe({'routes': trimmed_routes}))
+
+
 # Current shape (BEFORE): {"depot": {...}, "vehicles": [...], "source": "..."}
 # Wrapped: ok({"depot": {...}, "vehicles": [...], "source": "..."})
 @app.route('/fleet-routes', methods=['GET'])

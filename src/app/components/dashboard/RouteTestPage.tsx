@@ -103,13 +103,6 @@ async function geocodeQuery(query: string): Promise<GeocodeResult> {
   };
 }
 
-// Round-robin split of customers across vehicles (preserves input order within each vehicle).
-function splitCustomers(count: number, vehicles: number): number[][] {
-  const buckets: number[][] = Array.from({ length: vehicles }, () => []);
-  for (let i = 0; i < count; i++) buckets[i % vehicles].push(i);
-  return buckets.filter(b => b.length > 0);
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RouteTestPage() {
@@ -344,20 +337,62 @@ export function RouteTestPage() {
       setRouting(true);
       setRouteError(null);
 
-      const usedVehicles = Math.min(vehicleCount, located.length);
-      const buckets = splitCustomers(located.length, usedVehicles);
-      const newPaths: LatLng[][] = [];
-      const assignments: VehicleAssignment[] = [];
-
       try {
-        for (let v = 0; v < buckets.length; v++) {
-          const customerIndicesInBucket = buckets[v].map(i => located[i].idx);
+        // Ask the backend optimizer for stop-to-vehicle assignment + ordering.
+        const res = await fetch('/api/optimize-custom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            depot: {
+              lat: depot.result.lat,
+              lng: depot.result.lng,
+              name: depot.result.label,
+            },
+            customers: located.map(({ customer }) => ({
+              lat: customer.result!.lat,
+              lng: customer.result!.lng,
+              name: customer.name || customer.result!.label,
+            })),
+            n_vehicles: vehicleCount,
+            w_cost: 0.5,
+            w_co2: 0.3,
+            w_fairness: 0.2,
+          }),
+        });
+        const envelope = await res.json().catch(() => null);
+        if (!res.ok || !envelope?.success) {
+          throw new Error(envelope?.error?.message ?? `HTTP ${res.status}`);
+        }
+        const optimizerRoutes = envelope.data.routes as Record<string, {
+          vehicle: string;
+          stops: Array<{ lat: number; lng: number; name: string }>;
+          distance_km: number;
+        }>;
+
+        // Map a returned stop back to its index in customers[] by lat/lng.
+        const matchCustomer = (lat: number, lng: number): number => {
+          for (const { idx, customer } of located) {
+            const cr = customer.result!;
+            if (Math.abs(cr.lat - lat) < 1e-6 && Math.abs(cr.lng - lng) < 1e-6) {
+              return idx;
+            }
+          }
+          return -1;
+        };
+
+        const newPaths: LatLng[][] = [];
+        const assignments: VehicleAssignment[] = [];
+        const routeEntries = Object.values(optimizerRoutes);
+
+        for (let v = 0; v < routeEntries.length; v++) {
+          const entry = routeEntries[v];
+          const customerIndicesInBucket = entry.stops
+            .map(s => matchCustomer(s.lat, s.lng))
+            .filter(i => i >= 0);
+
           const waypoints: LatLng[] = [
             [depot.result.lat, depot.result.lng],
-            ...customerIndicesInBucket.map(i => {
-              const cr = customers[i].result!;
-              return [cr.lat, cr.lng] as LatLng;
-            }),
+            ...entry.stops.map(s => [s.lat, s.lng] as LatLng),
             [finalDest.result.lat, finalDest.result.lng],
           ];
 
