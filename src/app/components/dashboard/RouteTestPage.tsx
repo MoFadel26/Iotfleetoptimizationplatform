@@ -52,6 +52,24 @@ const MAX_CUSTOMERS = 10;
 const MAX_VEHICLES = 6;
 const DEFAULT_CENTER: [number, number] = [24.7136, 46.6753];
 
+const PRESET_ADDRESSES = [
+  "REMA8928",
+  "RAYA6801",
+  "RAYB7223",
+  "RASB7938",
+  "RFGA3376",
+  "RUQC2893",
+  "RQSA3067",
+  "RESA2573",
+  "REQA3909",
+  "RBMA2613",
+  "RBFA7005",
+  "RBUA6443",
+  "RBSA7287",
+  "REFA7887",
+  "RQWA3477",
+];
+
 // Muted palette (mirrors LiveFleetMapPage style)
 const VEHICLE_COLORS = ['#2563eb', '#16a34a', '#9333ea', '#0891b2', '#ca8a04', '#475569'];
 
@@ -875,6 +893,23 @@ function LocationField({
             <StatusIcon status={status} />
           </span>
         </div>
+        <select
+          value=""
+          disabled={disabled}
+          onChange={e => {
+            const v = e.target.value;
+            if (!v) return;
+            onChange(v);
+            e.target.value = '';
+          }}
+          aria-label={t('test.presets')}
+          className="w-24 text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+        >
+          <option value="">{t('test.presets')}</option>
+          {PRESET_ADDRESSES.map(addr => (
+            <option key={addr} value={addr}>{addr}</option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={onLocate}
