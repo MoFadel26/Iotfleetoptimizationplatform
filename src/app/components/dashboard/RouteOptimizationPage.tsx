@@ -22,7 +22,6 @@ interface RouteEntry {
 }
 
 interface ApiResult {
-  status: 'success';
   n_customers: number;
   n_vehicles: number;
   baseline: {
@@ -118,12 +117,12 @@ export function RouteOptimizationPage() {
           seed: 42,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-        throw new Error(err.message ?? `HTTP ${res.status}`);
+      const envelope = await res.json().catch(() => null);
+      if (!res.ok || !envelope?.success) {
+        const message = envelope?.error?.message ?? `HTTP ${res.status}`;
+        throw new Error(message);
       }
-      const data: ApiResult = await res.json();
-      setApiResult(data);
+      setApiResult(envelope.data as ApiResult);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('failed to fetch')) {

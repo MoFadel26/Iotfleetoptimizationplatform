@@ -431,13 +431,36 @@ class FleetOptimizer:
         }
 
 
+# ── RESPONSE ENVELOPE ──────────────────────────────────────────────────────────
+# All endpoints (except /health, which has a fixed external contract) wrap their
+# payload in a uniform envelope:
+#   success: {"success": True,  "data": <payload>}
+#   error:   {"success": False, "error": {"code": "<snake_case>", "message": "<human>"}}
+# HTTP status codes are unchanged — only body shape.
+
+def ok(data, status: int = 200):
+    return jsonify({"success": True, "data": data}), status
+
+
+def err(code: str, message: str, status: int):
+    return jsonify({"success": False, "error": {"code": code, "message": message}}), status
+
+
 # ── FLASK ENDPOINTS ────────────────────────────────────────────────────────────
 
+# Current shape (KEPT, NOT wrapped): {"status": "ok", "solver": "PuLP/CBC"}
+# Health checks are consumed externally and have a fixed contract.
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'solver': 'PuLP/CBC'})
 
 
+# Current shape (BEFORE):
+#   success 200: {"status": "success", "n_customers", "n_vehicles", "baseline", "optimized", "comparison"}
+#   error   500: {"status": "error", "message": "<msg>"}
+# Wrapped:
+#   success 200: ok({"n_customers", "n_vehicles", "baseline", "optimized", "comparison"})
+#   error   500: err("solver_failed", "<msg>", 500)
 @app.route('/optimize', methods=['POST'])
 def optimize():
     body = request.json or {}
@@ -466,12 +489,11 @@ def optimize():
     result = optimizer.solve()
 
     if result.get('status') not in ('Optimal', 'Feasible'):
-        return jsonify({'status': 'error', 'message': result.get('error', 'Solver failed')}), 500
+        return err('solver_failed', result.get('error', 'Solver failed'), 500)
 
     comparison = optimizer.compare(baseline, result)
 
-    response = to_json_safe({
-        'status':      'success',
+    payload = to_json_safe({
         'n_customers': n_customers,
         'n_vehicles':  n_vehicles,
         'baseline':    baseline,
@@ -493,9 +515,11 @@ def optimize():
     except Exception:
         pass  # never fail the API response because of a DB write error
 
-    return jsonify(response)
+    return ok(payload)
 
 
+# Current shape (BEFORE): {"depot": {...}, "vehicles": [...], "source": "..."}
+# Wrapped: ok({"depot": {...}, "vehicles": [...], "source": "..."})
 @app.route('/fleet-routes', methods=['GET'])
 def fleet_routes():
     """
@@ -585,13 +609,15 @@ def fleet_routes():
                 'idle':         True,
             })
 
-    return jsonify(to_json_safe({
+    return ok(to_json_safe({
         'depot':    {'name': depot.name, 'lat': depot.lat, 'lon': depot.lon},
         'vehicles': vehicles_out,
         'source':   source,
     }))
 
 
+# Current shape (BEFORE): [<doc>, <doc>, ...]
+# Wrapped: ok([<doc>, ...])
 @app.route('/runs', methods=['GET'])
 def list_runs():
     """Returns the 20 most recent optimization runs from MongoDB."""
@@ -604,7 +630,7 @@ def list_runs():
     for d in docs:
         if "timestamp" in d:
             d["timestamp"] = d["timestamp"].isoformat()
-    return jsonify(docs)
+    return ok(docs)
 
 
 # ── HERE GEOCODING PROXY ──────────────────────────────────────────────────────
@@ -623,16 +649,26 @@ def _here_request(query: str, api_key: str, timeout: float = 5.0):
     )
 
 
+# Current shape (BEFORE):
+#   success 200: flat geocode object {title, formatted_address, latitude, longitude, ...}
+#   error 400  : {"error": "empty_query"}
+#   error 500  : {"error": "missing_api_key"}
+#   error 502  : {"error": "here_status_<n>"}
+#   error 404  : {"error": "address_not_found"}
+#   error 504  : {"error": "upstream_unavailable", "detail": "<name>"}
+# Wrapped:
+#   success 200: ok({...flat...})
+#   error      : err("<code>", "<message>", <status>)  (same status codes)
 @app.route('/geocode', methods=['GET'])
 @app.route('/api/geocode', methods=['GET'])
 def geocode():
     query = (request.args.get('q') or '').strip()
     if not query:
-        return jsonify({'error': 'empty_query'}), 400
+        return err('empty_query', 'Query string is empty.', 400)
 
     api_key = os.environ.get('HERE_API_KEY', '').strip()
     if not api_key:
-        return jsonify({'error': 'missing_api_key'}), 500
+        return err('missing_api_key', 'HERE_API_KEY is not configured on the server.', 500)
 
     # One retry on transient failure (timeout / 5xx / connection error).
     last_err = None
@@ -644,16 +680,17 @@ def geocode():
                 continue
             if res.status_code != 200:
                 _geocode_log.warning("HERE returned %s for query=%r", res.status_code, query)
-                return jsonify({'error': f'here_status_{res.status_code}'}), 502
+                return err(f'here_status_{res.status_code}',
+                           f'HERE geocoding returned status {res.status_code}.', 502)
             data = res.json()
             items = data.get('items') or []
             if not items:
-                return jsonify({'error': 'address_not_found'}), 404
+                return err('address_not_found', 'No matching address was found.', 404)
 
             it = items[0]
             pos = it.get('position') or {}
             addr = it.get('address') or {}
-            return jsonify({
+            return ok({
                 'title':            it.get('title'),
                 'formatted_address': addr.get('label'),
                 'latitude':         pos.get('lat'),
@@ -673,7 +710,8 @@ def geocode():
             continue
 
     _geocode_log.warning("HERE geocoding failed for query=%r: %s", query, last_err)
-    return jsonify({'error': 'upstream_unavailable', 'detail': last_err}), 504
+    return err('upstream_unavailable',
+               f'HERE geocoding service unavailable ({last_err}).', 504)
 
 
 if __name__ == '__main__':

@@ -85,11 +85,13 @@ function depotIcon(): L.DivIcon {
 
 async function geocodeQuery(query: string): Promise<GeocodeResult> {
   const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = (data && (data.error as string)) || 'address_not_found';
-    throw new Error(err);
+  const envelope = await res.json().catch(() => null);
+  if (!envelope?.success) {
+    // Callers switch on the error code (not the human message) for i18n mapping.
+    const code = envelope?.error?.code || 'address_not_found';
+    throw new Error(code);
   }
+  const data = envelope.data;
   if (typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
     throw new Error('address_not_found');
   }

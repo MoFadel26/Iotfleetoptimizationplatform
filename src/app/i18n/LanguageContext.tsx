@@ -200,7 +200,7 @@ const en: Record<string, string> = {
   'home.delayed': 'Delayed',
   'home.requiresAttention': 'Requires attention',
   'home.vehicleTypes': 'Vehicle Types Distribution',
-  'home.iceТrucks': 'ICE Trucks',
+  'home.iceTrucks': 'ICE Trucks',
   'home.conventionalFleet': 'Conventional fleet',
   'home.electricVehicles': 'Electric Vehicles',
   'home.zeroEmission': 'Zero emission',
@@ -263,19 +263,11 @@ const en: Record<string, string> = {
   'route.balanced': 'Balanced',
   'route.balancedDesc': 'Optimize all objectives equally',
   'route.runOptimization': 'Run Optimization',
-  'route.optimizing': 'Optimizing...',
   'route.fleetSummary': 'Fleet Summary',
-  'route.vehicles': 'vehicles',
-  'route.routes': 'routes',
-  'route.stops': 'stops',
   'route.solveTime': 'Solve time',
   'route.results': 'Optimization Results',
   'route.waitingTitle': 'Ready to Optimize',
   'route.waitingDesc': 'Select an objective and click Run Optimization to generate optimal routes',
-  'route.totalCost': 'Total Cost',
-  'route.totalEmissions': 'Total Emissions',
-  'route.avgUtilization': 'Avg. Utilization',
-  'route.fairnessIndex': 'Fairness Index',
   'route.reportDelay': 'Report Delay',
   'route.defaultLabel': 'Active Route',
 
@@ -699,7 +691,7 @@ const ar: Record<string, string> = {
   'home.delayed': 'متأخر',
   'home.requiresAttention': 'يحتاج إلى اهتمام',
   'home.vehicleTypes': 'توزيع أنواع المركبات',
-  'home.iceТrucks': 'شاحنات ICE',
+  'home.iceTrucks': 'شاحنات ICE',
   'home.conventionalFleet': 'الأسطول التقليدي',
   'home.electricVehicles': 'المركبات الكهربائية',
   'home.zeroEmission': 'صفر انبعاثات',
@@ -762,19 +754,11 @@ const ar: Record<string, string> = {
   'route.balanced': 'متوازن',
   'route.balancedDesc': 'تحسين جميع الأهداف بالتساوي',
   'route.runOptimization': 'تشغيل التحسين',
-  'route.optimizing': 'جارٍ التحسين...',
   'route.fleetSummary': 'ملخص الأسطول',
-  'route.vehicles': 'مركبات',
-  'route.routes': 'مسارات',
-  'route.stops': 'محطات',
   'route.solveTime': 'وقت الحل',
   'route.results': 'نتائج التحسين',
   'route.waitingTitle': 'جاهز للتحسين',
   'route.waitingDesc': 'اختر هدفاً وانقر على تشغيل التحسين لإنشاء مسارات مثلى',
-  'route.totalCost': 'التكلفة الإجمالية',
-  'route.totalEmissions': 'إجمالي الانبعاثات',
-  'route.avgUtilization': 'متوسط الاستخدام',
-  'route.fairnessIndex': 'مؤشر العدالة',
   'route.reportDelay': 'الإبلاغ عن تأخير',
   'route.defaultLabel': 'المسار النشط',
 
@@ -1111,7 +1095,7 @@ const ur: Record<string, string> = {
   'home.delayed': 'تاخیر سے', // TODO: verify Urdu
   'home.requiresAttention': 'توجہ درکار', // TODO: verify Urdu
   'home.vehicleTypes': 'گاڑیوں کی اقسام کی تقسیم', // TODO: verify Urdu
-  'home.iceТrucks': 'ICE ٹرک', // TODO: verify Urdu
+  'home.iceTrucks': 'ICE ٹرک', // TODO: verify Urdu
   'home.conventionalFleet': 'روایتی فلیٹ', // TODO: verify Urdu
   'home.electricVehicles': 'برقی گاڑیاں', // TODO: verify Urdu
   'home.zeroEmission': 'صفر اخراج', // TODO: verify Urdu
@@ -1174,19 +1158,11 @@ const ur: Record<string, string> = {
   'route.balanced': 'متوازن', // TODO: verify Urdu
   'route.balancedDesc': 'تمام مقاصد کو برابر بہتر بنائیں', // TODO: verify Urdu
   'route.runOptimization': 'اصلاح چلائیں', // TODO: verify Urdu
-  'route.optimizing': 'اصلاح ہو رہی ہے...', // TODO: verify Urdu
   'route.fleetSummary': 'فلیٹ کا خلاصہ', // TODO: verify Urdu
-  'route.vehicles': 'گاڑیاں', // TODO: verify Urdu
-  'route.routes': 'راستے', // TODO: verify Urdu
-  'route.stops': 'پڑاؤ', // TODO: verify Urdu
   'route.solveTime': 'حل کا وقت', // TODO: verify Urdu
   'route.results': 'اصلاح کے نتائج', // TODO: verify Urdu
   'route.waitingTitle': 'اصلاح کے لیے تیار', // TODO: verify Urdu
   'route.waitingDesc': 'مقصد منتخب کریں اور بہترین راستے بنانے کے لیے اصلاح چلائیں پر کلک کریں', // TODO: verify Urdu
-  'route.totalCost': 'کل لاگت', // TODO: verify Urdu
-  'route.totalEmissions': 'کل اخراج', // TODO: verify Urdu
-  'route.avgUtilization': 'اوسط استعمال', // TODO: verify Urdu
-  'route.fairnessIndex': 'انصاف انڈیکس', // TODO: verify Urdu
   'route.reportDelay': 'تاخیر کی اطلاع', // TODO: verify Urdu
   'route.defaultLabel': 'فعال راستہ', // TODO: verify Urdu
 

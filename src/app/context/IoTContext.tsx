@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { useIoTDevice } from '@/app/hooks/useIoTDevice';
 import { useDisruptionDetector, Disruption } from '@/app/hooks/useDisruptionDetector';
 import { IoTPayload } from '@/app/simulation/mockIoTDevice';
-import { mockDeliveryStops } from '@/app/data/mockData';
 
 interface IoTContextType {
   iotData: IoTPayload | null;
@@ -15,9 +14,6 @@ interface IoTContextType {
   recalcTimeMs: number | null;
   systemReliability: number;
   acknowledgeDisruption: (id: string) => void;
-
-  currentStopIndex: number;
-  setCurrentStopIndex: (index: number) => void;
 
   hasRecalculated: boolean;
   setHasRecalculated: (v: boolean) => void;
@@ -34,11 +30,6 @@ export function useIoT(): IoTContextType {
   return ctx;
 }
 
-const initialStopIndex = (() => {
-  const i = mockDeliveryStops.findIndex(s => s.status === 'current');
-  return i >= 0 ? i : 0;
-})();
-
 export function IoTProvider({ children }: { children: React.ReactNode }) {
   const { data, isConnected, lastUpdated, consecutiveFailures } = useIoTDevice();
   const {
@@ -49,7 +40,6 @@ export function IoTProvider({ children }: { children: React.ReactNode }) {
     acknowledgeDisruption,
   } = useDisruptionDetector(data);
 
-  const [currentStopIndex, setCurrentStopIndex] = useState<number>(initialStopIndex);
   const [hasRecalculated, setHasRecalculated] = useState<boolean>(false);
   const [manualRecalcTick, setManualRecalcTick] = useState<number>(0);
 
@@ -68,9 +58,6 @@ export function IoTProvider({ children }: { children: React.ReactNode }) {
     recalcTimeMs,
     systemReliability,
     acknowledgeDisruption,
-
-    currentStopIndex,
-    setCurrentStopIndex,
 
     hasRecalculated,
     setHasRecalculated,

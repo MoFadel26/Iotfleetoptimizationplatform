@@ -10,6 +10,12 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { EmptyState } from '@/app/components/ui/EmptyState';
 import { fetchStreetRoute, fetchAlternateStreetRoute, type LatLng } from '@/app/utils/streetRouting';
+import {
+  buildCompletedStopIcon,
+  buildCurrentStopIcon,
+  buildPendingStopIcon,
+  buildFinalStopIcon,
+} from '@/app/utils/stopMarkers';
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -50,35 +56,6 @@ function motionArrow(motion: string): string {
   return '→';
 }
 
-function stopDotIcon(status: StopStatus, label: number): L.DivIcon {
-  if (status === 'completed') {
-    return L.divIcon({
-      className: '',
-      html: `<div style="width:22px;height:22px;border-radius:50%;background:#9ca3af;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;">✓</div>`,
-      iconSize: [22, 22], iconAnchor: [11, 11],
-    });
-  }
-  if (status === 'current') {
-    return L.divIcon({
-      className: '',
-      html: `<div style="position:relative;width:34px;height:34px;"><span style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,.35);animation:stopPulse 1.6s ease-out infinite;"></span><span style="position:absolute;inset:7px;background:#2563eb;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);"></span></div>`,
-      iconSize: [34, 34], iconAnchor: [17, 17],
-    });
-  }
-  if (status === 'final') {
-    return L.divIcon({
-      className: '',
-      html: `<div style="display:flex;flex-direction:column;align-items:center;"><div style="background:#dc2626;color:#fff;border-radius:50%;width:32px;height:32px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;">★</div><div style="background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-top:2px;white-space:nowrap;">Final</div></div>`,
-      iconSize: [64, 48], iconAnchor: [32, 40],
-    });
-  }
-  return L.divIcon({
-    className: '',
-    html: `<div style="width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid #2563eb;box-shadow:0 1px 3px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;color:#1d4ed8;font-size:11px;font-weight:700;">${label}</div>`,
-    iconSize: [24, 24], iconAnchor: [12, 12],
-  });
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RouteNavigationPage() {
@@ -116,7 +93,11 @@ export function RouteNavigationPage() {
   useEffect(() => {
     fetch('/optimizer/fleet-routes')
       .then(r => r.json())
-      .then((d: FleetRouteResponse) => {
+      .then((envelope) => {
+        if (!envelope?.success) {
+          throw new Error(envelope?.error?.message ?? 'fleet-routes failed');
+        }
+        const d = envelope.data as FleetRouteResponse;
         const activeVehicle = d.vehicles.find(v => !v.idle);
         if (activeVehicle) {
           setStops(activeVehicle.stops);
@@ -205,8 +186,13 @@ export function RouteNavigationPage() {
     let upcomingCount = 0;
     stops.forEach(stop => {
       const label = stop.status === 'upcoming' ? ++upcomingCount : 0;
+      const icon =
+        stop.status === 'completed' ? buildCompletedStopIcon() :
+        stop.status === 'current'   ? buildCurrentStopIcon()   :
+        stop.status === 'final'     ? buildFinalStopIcon('Final') :
+                                      buildPendingStopIcon(label);
       const marker = L.marker([stop.lat, stop.lon], {
-        icon: stopDotIcon(stop.status, label), keyboard: false,
+        icon, keyboard: false,
       }).addTo(map).bindTooltip(stop.name, { direction: 'top', offset: [0, -8] });
       stopMarkersRef.current.push(marker);
     });

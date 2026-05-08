@@ -191,47 +191,6 @@ export const mockKPIData: KPIData = {
   workloadFairness: 0.82,
 };
 
-// Mock Optimization Results
-export interface OptimizationResult {
-  routeId: string;
-  vehicleId: string;
-  driverName: string;
-  stops: number;
-  distance: number;
-  cost: number;
-  co2: number;
-}
-
-export const mockOptimizationResults: OptimizationResult[] = [
-  {
-    routeId: 'R001',
-    vehicleId: 'V001',
-    driverName: 'Ahmed Al-Rashid',
-    stops: 8,
-    distance: 45.2,
-    cost: 520,
-    co2: 38.5,
-  },
-  {
-    routeId: 'R002',
-    vehicleId: 'V002',
-    driverName: 'Mohammed Al-Saud',
-    stops: 6,
-    distance: 32.8,
-    cost: 380,
-    co2: 12.3,
-  },
-  {
-    routeId: 'R003',
-    vehicleId: 'V005',
-    driverName: 'Omar Al-Qassim',
-    stops: 7,
-    distance: 38.4,
-    cost: 465,
-    co2: 32.1,
-  },
-];
-
 // Mock Analytics Data - Cost vs CO2 over time
 export const mockCostCO2Data = [
   { date: 'Jan', cost: 42000, co2: 2950 },

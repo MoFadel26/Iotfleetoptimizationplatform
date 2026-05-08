@@ -11,6 +11,12 @@ import { useIoT } from '@/app/context/IoTContext';
 import type { Disruption } from '@/app/hooks/useDisruptionDetector';
 import { IOT_CONFIG } from '@/app/config/iotConfig';
 import { fetchStreetRoute, fetchAlternateStreetRoute, type LatLng } from '@/app/utils/streetRouting';
+import {
+  buildCompletedStopIcon,
+  buildCurrentStopIcon,
+  buildPendingStopIcon,
+  buildFinalStopIcon,
+} from '@/app/utils/stopMarkers';
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -57,36 +63,6 @@ const DRIVER_NAMES = [
   'Mohammed Al-Saud', 'Abdullah Al-Otaibi', 'Khalid Al-Qahtani',
   'Omar Al-Dosari', 'Faisal Al-Harbi', 'Saleh Al-Shehri', 'Tariq Al-Zahrani',
 ];
-
-function stopIcon(status: StopStatus, label: number): L.DivIcon {
-  if (status === 'completed') {
-    return L.divIcon({
-      className: '',
-      html: `<div style="width:22px;height:22px;border-radius:50%;background:#9ca3af;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;">✓</div>`,
-      iconSize: [22, 22], iconAnchor: [11, 11],
-    });
-  }
-  if (status === 'current') {
-    return L.divIcon({
-      className: '',
-      html: `<div style="position:relative;width:36px;height:36px;"><span style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,.4);animation:stopPulse 1.6s ease-out infinite;"></span><span style="position:absolute;inset:8px;background:#2563eb;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);"></span></div>`,
-      iconSize: [36, 36], iconAnchor: [18, 18],
-    });
-  }
-  if (status === 'final') {
-    return L.divIcon({
-      className: '',
-      html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;"><div style="background:#dc2626;color:#fff;border-radius:50%;width:34px;height:34px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;">★</div><div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-top:3px;white-space:nowrap;">Final</div></div>`,
-      iconSize: [70, 54], iconAnchor: [35, 44],
-    });
-  }
-  // upcoming
-  return L.divIcon({
-    className: '',
-    html: `<div style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid #2563eb;box-shadow:0 1px 4px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;color:#1d4ed8;font-size:12px;font-weight:700;">${label}</div>`,
-    iconSize: [26, 26], iconAnchor: [13, 13],
-  });
-}
 
 function depotIcon(): L.DivIcon {
   return L.divIcon({
@@ -167,7 +143,12 @@ export function LiveFleetMapPage() {
   useEffect(() => {
     fetch('/optimizer/fleet-routes')
       .then(r => r.json())
-      .then((d: FleetRouteResponse) => setFleetRoutes(d))
+      .then((envelope) => {
+        if (!envelope?.success) {
+          throw new Error(envelope?.error?.message ?? 'fleet-routes failed');
+        }
+        setFleetRoutes(envelope.data as FleetRouteResponse);
+      })
       .catch(() => setFleetRoutes(null))
       .finally(() => setRoutesLoading(false));
   }, []);
@@ -305,8 +286,13 @@ export function LiveFleetMapPage() {
       let upcomingCount = 0;
       vehicle.stops.forEach(stop => {
         const label = stop.status === 'upcoming' ? ++upcomingCount : 0;
+        const icon =
+          stop.status === 'completed' ? buildCompletedStopIcon() :
+          stop.status === 'current'   ? buildCurrentStopIcon()   :
+          stop.status === 'final'     ? buildFinalStopIcon('Final') :
+                                        buildPendingStopIcon(label);
         const marker = L.marker([stop.lat, stop.lon], {
-          icon: stopIcon(stop.status, label),
+          icon,
           interactive: true, keyboard: false,
           opacity: 0,
         })
@@ -498,7 +484,7 @@ export function LiveFleetMapPage() {
             <div className="font-semibold text-gray-900 mb-1">Stop Legend</div>
             <div className="flex items-center gap-1.5"><span style={{ background: '#9ca3af', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>✓</span> Completed</div>
             <div className="flex items-center gap-1.5"><span style={{ background: '#2563eb', borderRadius: '50%', width: 14, height: 14, display: 'inline-block', border: '2px solid #fff', boxShadow: '0 0 0 2px #93c5fd' }} /> Current</div>
-            <div className="flex items-center gap-1.5"><span style={{ background: '#fff', border: '2px solid #2563eb', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#1d4ed8', fontWeight: 700 }}>N</span> Upcoming</div>
+            <div className="flex items-center gap-1.5"><span style={{ background: '#fff', border: '2px solid #6b7280', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#1f2937', fontWeight: 700 }}>N</span> Upcoming</div>
             <div className="flex items-center gap-1.5"><span style={{ color: '#dc2626', fontSize: 14 }}>★</span> Final stop</div>
             {hasRecalculated && <div className="flex items-center gap-1.5 pt-0.5 border-t border-gray-200"><svg width="18" height="5"><line x1="0" y1="2.5" x2="18" y2="2.5" stroke="#f59e0b" strokeWidth="3" strokeDasharray="4 3" /></svg> Recalculated</div>}
           </div>

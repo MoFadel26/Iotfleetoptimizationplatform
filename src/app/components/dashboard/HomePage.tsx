@@ -137,7 +137,7 @@ export function HomePage() {
                   <Truck className="w-5 h-5 text-blue-700" />
                 </div>
                 <div className={isRTL ? 'text-right' : ''}>
-                  <p className="text-sm font-medium text-gray-900">{t('home.iceТrucks')}</p>
+                  <p className="text-sm font-medium text-gray-900">{t('home.iceTrucks')}</p>
                   <p className="text-xs text-gray-500">{t('home.conventionalFleet')}</p>
                 </div>
               </div>
