@@ -322,8 +322,21 @@ export function RouteTestPage() {
     !routing;
 
   const clearRoutePolylines = () => {
+    // Remove every explicitly-tracked polyline.
     routePolylinesRef.current.forEach(p => p.remove());
     routePolylinesRef.current = [];
+
+    // Defensive sweep: also remove any route polyline still attached to the map
+    // that escaped the ref (e.g. from a partial earlier run). L.Polygon extends
+    // L.Polyline, so exclude it — only loose route lines get swept.
+    const map = mapRef.current;
+    if (map) {
+      map.eachLayer(layer => {
+        if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+          layer.remove();
+        }
+      });
+    }
   };
 
   const generate = useCallback(
