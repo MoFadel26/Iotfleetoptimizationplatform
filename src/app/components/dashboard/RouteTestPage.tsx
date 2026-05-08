@@ -112,6 +112,7 @@ export function RouteTestPage() {
   const [finalDest, setFinalDest] = useState<LocatedPoint>(emptyPoint());
   const [customers, setCustomers] = useState<CustomerEntry[]>([newCustomer()]);
   const [vehicleCount, setVehicleCount] = useState(1);
+  const [enforceVehicles, setEnforceVehicles] = useState(false);
 
   const [routing, setRouting] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -357,6 +358,7 @@ export function RouteTestPage() {
             w_cost: 0.5,
             w_co2: 0.3,
             w_fairness: 0.2,
+            enforce_vehicles: enforceVehicles,
           }),
         });
         const envelope = await res.json().catch(() => null);
@@ -451,7 +453,7 @@ export function RouteTestPage() {
         setRouting(false);
       }
     },
-    [depot, finalDest, customers, vehicleCount]
+    [depot, finalDest, customers, vehicleCount, enforceVehicles]
   );
 
   // ── Status icon ────────────────────────────────────────────────────────────
@@ -602,6 +604,20 @@ export function RouteTestPage() {
                 />
                 <span className="text-xs text-gray-500">{t('test.vehiclesHelp')}</span>
               </div>
+
+              <label className="flex items-center gap-2 mt-3 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={enforceVehicles}
+                  disabled={fieldsLocked}
+                  onChange={e => setEnforceVehicles(e.target.checked)}
+                  className="rounded border-gray-300 focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                />
+                {t('test.enforceVehicles')}
+              </label>
+              {enforceVehicles && (
+                <p className="text-xs text-gray-500 mt-1">{t('test.enforceVehiclesHint')}</p>
+              )}
             </section>
 
             {/* Generate / Recalc */}

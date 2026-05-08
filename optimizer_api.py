@@ -64,6 +64,7 @@ class OptimizationConfig:
     solver_gap: float = 0.0               # 0 = find true optimal, no early exit
     cost_reduction_target: float = 0.15
     co2_reduction_target: float = 0.10
+    min_vehicles_used: int | None = None  # None = solver picks; int = lower bound on vehicles deployed
 
 
 # ── MONGO LOADERS ──────────────────────────────────────────────────────────────
@@ -345,6 +346,11 @@ class FleetOptimizer:
             prob += L_max >= L[k]
             prob += L_min <= L[k] + M * (1 - y[k])
 
+        # Optional minimum-fleet-deployment constraint.
+        # When set, force the solver to use at least this many vehicles.
+        if self.config.min_vehicles_used is not None:
+            prob += pulp.lpSum(y[k] for k in range(m)) >= self.config.min_vehicles_used
+
         solver_kwargs = {"gapRel": self.config.solver_gap, "msg": 0}
         if tl is not None:
             solver_kwargs["timeLimit"] = tl
@@ -521,7 +527,8 @@ def optimize():
 # NEW endpoint — caller-supplied coordinates (no areas_col, no RNG sampling).
 # Request:  {"depot":{lat,lng,name}, "customers":[{lat,lng,name},...] (1..10),
 #            "n_vehicles":int (1..6, ≤len(customers)),
-#            "w_cost"?,"w_co2"?,"w_fairness"? (defaults 0.5/0.3/0.2)}
+#            "w_cost"?,"w_co2"?,"w_fairness"? (defaults 0.5/0.3/0.2),
+#            "enforce_vehicles"?:bool (default false — when true, solver must use ≥ n_vehicles)}
 # Success 200: ok({"routes": {"<k>": {"vehicle","stops":[{lat,lng,name},...],"distance_km"}}})
 # Error   400: err("invalid_input", "<msg>", 400)
 # Error   500: err("solver_failed"|"no_vehicles", "<msg>", 500)
@@ -573,6 +580,7 @@ def optimize_custom():
     w_cost     = float(body.get('w_cost',     0.5))
     w_co2      = float(body.get('w_co2',      0.3))
     w_fairness = float(body.get('w_fairness', 0.2))
+    enforce_vehicles = bool(body.get('enforce_vehicles', False))
 
     # ── Build Location objects directly from the supplied lat/lng ──
     # Realistic defaults for fields the caller doesn't supply.
@@ -617,6 +625,7 @@ def optimize_custom():
         solver_gap=default_cfg.solver_gap,
         cost_reduction_target=default_cfg.cost_reduction_target,
         co2_reduction_target=default_cfg.co2_reduction_target,
+        min_vehicles_used=n_vehicles if enforce_vehicles else None,
     )
     optimizer = FleetOptimizer(locations, vehicles, config)
     result = optimizer.solve()
