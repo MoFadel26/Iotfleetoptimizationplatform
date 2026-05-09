@@ -10,6 +10,7 @@ import {
   type LatLng,
 } from '@/app/utils/streetRouting';
 import { buildPendingStopIcon, buildFinalStopIcon } from '@/app/utils/stopMarkers';
+import { apiUrl } from '@/services/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ function depotIcon(): L.DivIcon {
 }
 
 async function geocodeQuery(query: string): Promise<GeocodeResult> {
-  const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
+  const res = await fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(query)}`));
   const envelope = await res.json().catch(() => null);
   if (!envelope?.success) {
     // Callers switch on the error code (not the human message) for i18n mapping.
@@ -371,7 +372,7 @@ export function RouteTestPage() {
 
       try {
         // Ask the backend optimizer for stop-to-vehicle assignment + ordering.
-        const res = await fetch('/api/optimize-custom', {
+        const res = await fetch(apiUrl('/api/optimize-custom'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

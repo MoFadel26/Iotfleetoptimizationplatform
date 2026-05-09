@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 import { Button } from '@/app/components/ui/button';
+import { apiUrl } from '@/services/api';
 import { toast } from 'sonner';
 
 // ── Types matching optimizer_api.py response ──────────────────────────────────
@@ -53,8 +54,6 @@ interface ApiResult {
     spec2_met: boolean;
   };
 }
-
-const OPTIMIZER_URL = '/optimizer';
 
 const WEIGHTS = {
   cost:     { w_cost: 0.7, w_co2: 0.2, w_fairness: 0.1 },
@@ -107,7 +106,7 @@ export function RouteOptimizationPage() {
     timerRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000);
 
     try {
-      const res = await fetch(`${OPTIMIZER_URL}/optimize`, {
+      const res = await fetch(apiUrl('/optimize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

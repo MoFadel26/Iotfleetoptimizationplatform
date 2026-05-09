@@ -2,6 +2,7 @@ import React, {
   createContext, useCallback, useContext, useEffect, useRef, useState,
 } from 'react';
 import { useIoT } from '@/app/context/IoTContext';
+import { apiUrl } from '@/services/api';
 import {
   fetchAlternateStreetRoute,
   fetchStreetRoute,
@@ -119,7 +120,7 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
   // Fetch fleet routes once and seed the active vehicle + initial OSRM path.
   useEffect(() => {
     let cancelled = false;
-    fetch('/optimizer/fleet-routes')
+    fetch(apiUrl('/fleet-routes'))
       .then(r => r.json())
       .then((envelope) => {
         if (cancelled) return;
