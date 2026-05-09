@@ -25,6 +25,9 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    preview: {
+      allowedHosts: ['iotfleetoptimizationplatform-production.up.railway.app', 'all'],
+    },
     resolve: {
       alias: {
         // Alias @ to the src directory
