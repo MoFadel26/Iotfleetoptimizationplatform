@@ -7,7 +7,7 @@ Deps: pip install flask flask-cors pulp numpy pymongo python-dotenv requests
 import os
 import logging
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pulp
 import numpy as np
@@ -23,7 +23,7 @@ load_dotenv()
 
 warnings.filterwarnings("ignore")
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='dist', static_url_path='')
 CORS(app)
 
 
@@ -454,12 +454,28 @@ def err(code: str, message: str, status: int):
 
 # ── FLASK ENDPOINTS ────────────────────────────────────────────────────────────
 
+# Serve the React frontend
+@app.route('/', methods=['GET'])
+def serve_index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+
+# Catch-all: serve index.html for any non-API route (SPA client-side routing)
+@app.route('/<path:path>', methods=['GET'])
+def serve_spa(path):
+    # Let Flask serve real static assets (JS, CSS, images) from dist/
+    import os as _os
+    full_path = _os.path.join(app.static_folder, path)
+    if _os.path.exists(full_path) and not _os.path.isdir(full_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, 'index.html')
+
+
 # Current shape (KEPT, NOT wrapped): {"status": "ok", "solver": "PuLP/CBC"}
 # Health checks are consumed externally and have a fixed contract.
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'solver': 'PuLP/CBC'})
-
 
 # Current shape (BEFORE):
 #   success 200: {"status": "success", "n_customers", "n_vehicles", "baseline", "optimized", "comparison"}
