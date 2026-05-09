@@ -15,15 +15,6 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
     ],
     server: {
-      proxy: {
-        // The IoT device lives on the local network and isn't reachable from
-        // a deployed frontend, so it stays as a dev-only proxy.
-        '/iot-device': {
-          target: iotDeviceUrl,
-          changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/iot-device/, ''),
-        },
-      },
     },
     preview: {
       allowedHosts: ['iotfleetoptimizationplatform-production.up.railway.app', 'all'],
