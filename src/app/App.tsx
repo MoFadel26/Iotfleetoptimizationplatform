@@ -16,6 +16,7 @@ import { NotificationsPage } from '@/app/components/mobile/NotificationsPage';
 import { ProfilePage } from '@/app/components/mobile/ProfilePage';
 import { LanguageProvider, useLanguage } from '@/app/i18n/LanguageContext';
 import { IoTProvider } from '@/app/context/IoTContext';
+import { RouteProvider } from '@/app/context/RouteContext';
 import { Toaster } from '@/app/components/ui/sonner';
 
 function AppInner() {
@@ -87,10 +88,12 @@ export default function App() {
   return (
     <LanguageProvider>
       <IoTProvider>
-        <Router>
-          <AppInner />
-          <Toaster position="top-right" richColors closeButton />
-        </Router>
+        <RouteProvider>
+          <Router>
+            <AppInner />
+            <Toaster position="top-right" richColors closeButton />
+          </Router>
+        </RouteProvider>
       </IoTProvider>
     </LanguageProvider>
   );

@@ -8,9 +8,10 @@ import { Button } from '@/app/components/ui/button';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 import { useIoT } from '@/app/context/IoTContext';
+import { useRoute } from '@/app/context/RouteContext';
 import type { Disruption } from '@/app/hooks/useDisruptionDetector';
 import { IOT_CONFIG } from '@/app/config/iotConfig';
-import { fetchStreetRoute, fetchAlternateStreetRoute, type LatLng } from '@/app/utils/streetRouting';
+import { fetchStreetRoute, type LatLng } from '@/app/utils/streetRouting';
 import {
   buildCompletedStopIcon,
   buildCurrentStopIcon,
@@ -23,36 +24,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href,
   shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href,
 });
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type StopStatus = 'completed' | 'current' | 'upcoming' | 'final';
-
-interface FleetStop {
-  id: number;
-  name: string;
-  lat: number;
-  lon: number;
-  status: StopStatus;
-}
-
-interface FleetVehicle {
-  id: string;
-  name: string;
-  vehicle_type: 'ICE' | 'EV' | 'Hybrid';
-  stops: FleetStop[];
-  distance_km: number;
-  cost_sar: number;
-  co2_kg: number;
-  load_kg: number;
-  idle: boolean;
-}
-
-interface FleetRouteResponse {
-  depot: { name: string; lat: number; lon: number };
-  vehicles: FleetVehicle[];
-  source: 'optimized' | 'baseline';
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -99,22 +70,23 @@ export function LiveFleetMapPage() {
     systemReliability,
     acknowledgeDisruption,
     hasRecalculated,
-    setHasRecalculated,
-    manualRecalcTick,
-    triggerManualRecalc,
   } = useIoT();
+  const {
+    vehicles,
+    depot,
+    source,
+    isLoadingFleet,
+    routePath,
+    isRouting,
+    recalculate,
+  } = useRoute();
 
   // Map refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const ev02MarkerRef = useRef<L.CircleMarker | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
-  const prevActivePathRef = useRef<LatLng[] | null>(null);
-  const routingTokenRef = useRef(0);
-  const activeRouteStopsRef = useRef<Array<{ lat: number; lon: number }>>([]);
   const routesDrawnRef = useRef(false);
-  const prevIsRecalcRef = useRef(false);
-  const prevManualRecalcTickRef = useRef(manualRecalcTick);
 
   // Per-vehicle layers: polyline + stop markers
   const vehiclePolylinesRef = useRef<Map<string, L.Polyline>>(new Map());
@@ -125,12 +97,9 @@ export function LiveFleetMapPage() {
   const [deviceIpEdit, setDeviceIpEdit] = useState(false);
   const [deviceIp, setDeviceIp] = useState(IOT_CONFIG.DEVICE_URL.replace('http://', ''));
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [isRouting, setIsRouting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() =>
     typeof window === 'undefined' ? true : window.innerWidth >= 1024
   );
-  const [fleetRoutes, setFleetRoutes] = useState<FleetRouteResponse | null>(null);
-  const [routesLoading, setRoutesLoading] = useState(true);
 
   useEffect(() => {
     const handleResize = () => setSidebarOpen(window.innerWidth >= 1024);
@@ -139,22 +108,9 @@ export function LiveFleetMapPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Fetch all vehicle routes from MongoDB via Flask
-  useEffect(() => {
-    fetch('/optimizer/fleet-routes')
-      .then(r => r.json())
-      .then((envelope) => {
-        if (!envelope?.success) {
-          throw new Error(envelope?.error?.message ?? 'fleet-routes failed');
-        }
-        setFleetRoutes(envelope.data as FleetRouteResponse);
-      })
-      .catch(() => setFleetRoutes(null))
-      .finally(() => setRoutesLoading(false));
-  }, []);
-
   const unresolvedDisruptions = disruptions.filter((d: Disruption) => d.resolvedAt === null);
-  const selectedVehicle = fleetRoutes?.vehicles.find(v => v.id === selectedVehicleId) ?? null;
+  const selectedVehicle = vehicles?.find(v => v.id === selectedVehicleId) ?? null;
+  const activeVehiclesCount = vehicles?.filter(v => !v.idle).length ?? 0;
 
   const panTo = useCallback((lat: number, lng: number, zoom = 14) => {
     mapRef.current?.setView([lat, lng], zoom, { animate: true });
@@ -185,8 +141,7 @@ export function LiveFleetMapPage() {
     setSelectedVehicleId(id);
     applySoloMode(id);
     // Fit map to this vehicle's stops
-    const vehicle = fleetRoutes?.vehicles.find(v => v.id === id);
-    const depot = fleetRoutes?.depot;
+    const vehicle = vehicles?.find(v => v.id === id);
     if (vehicle && depot && mapRef.current && vehicle.stops.length > 0) {
       const lats = [depot.lat, ...vehicle.stops.map(s => s.lat)];
       const lons = [depot.lon, ...vehicle.stops.map(s => s.lon)];
@@ -196,37 +151,7 @@ export function LiveFleetMapPage() {
       );
       mapRef.current.fitBounds(bounds, { padding: [40, 40], animate: true });
     }
-  }, [fleetRoutes, applySoloMode]);
-
-  // EV-02 route: blue solid (initial) or amber dashed (recalculated)
-  const computeEV02Route = useCallback(async (lat: number, lon: number, asRecalc: boolean) => {
-    if (!mapRef.current) return;
-    const token = ++routingTokenRef.current;
-    setIsRouting(true);
-    const waypoints: LatLng[] = [
-      [lat, lon],
-      ...activeRouteStopsRef.current.map(s => [s.lat, s.lon] as LatLng),
-    ];
-    const path = asRecalc
-      ? await fetchAlternateStreetRoute(waypoints, prevActivePathRef.current, 5)
-      : await fetchStreetRoute(waypoints);
-
-    if (token !== routingTokenRef.current || !mapRef.current) { setIsRouting(false); return; }
-
-    const prev = routePolylineRef.current;
-    if (prev) { prev.setStyle({ opacity: 0 }); setTimeout(() => prev.remove(), 500); }
-
-    routePolylineRef.current = L.polyline(path, {
-      color: asRecalc ? '#f59e0b' : '#1d4ed8',
-      weight: 5, opacity: 0.9,
-      dashArray: asRecalc ? '10 8' : undefined,
-      lineJoin: 'round', lineCap: 'round',
-    }).addTo(mapRef.current);
-
-    prevActivePathRef.current = path;
-    if (asRecalc) setHasRecalculated(true);
-    setIsRouting(false);
-  }, [setHasRecalculated]);
+  }, [vehicles, depot, applySoloMode]);
 
   // Init base map once
   useEffect(() => {
@@ -260,24 +185,17 @@ export function LiveFleetMapPage() {
 
   // Draw all vehicle routes + stops when fleet data arrives
   useEffect(() => {
-    if (!fleetRoutes || !mapRef.current || routesDrawnRef.current) return;
+    if (!vehicles || !depot || !mapRef.current || routesDrawnRef.current) return;
     routesDrawnRef.current = true;
     const map = mapRef.current;
-    const depot = fleetRoutes.depot;
 
     // Depot marker
     L.marker([depot.lat, depot.lon], { icon: depotIcon(), keyboard: false })
       .addTo(map)
       .bindTooltip(`🏭 ${depot.name}`, { direction: 'top' });
 
-    // Set EV-02 stops from first vehicle
-    const ev02Vehicle = fleetRoutes.vehicles.find(v => !v.idle);
-    if (ev02Vehicle) {
-      activeRouteStopsRef.current = ev02Vehicle.stops.map(s => ({ lat: s.lat, lon: s.lon }));
-    }
-
     // Draw each vehicle's route and stop markers (all hidden initially)
-    fleetRoutes.vehicles.forEach((vehicle, vIdx) => {
+    vehicles.forEach((vehicle, vIdx) => {
       if (vehicle.idle || vehicle.stops.length === 0) return;
 
       const markers: L.Marker[] = [];
@@ -332,7 +250,7 @@ export function LiveFleetMapPage() {
     });
 
     // Show first vehicle's route by default
-    const firstActive = fleetRoutes.vehicles.find(v => !v.idle);
+    const firstActive = vehicles.find(v => !v.idle);
     if (firstActive) {
       // Wait briefly for OSRM fetch to complete
       setTimeout(() => {
@@ -340,12 +258,7 @@ export function LiveFleetMapPage() {
         applySoloMode(firstActive.id);
       }, 1500);
     }
-
-    // Compute EV-02's route (solid blue)
-    const startLat = data?.lat ?? depot.lat;
-    const startLon = data?.lon ?? depot.lon;
-    computeEV02Route(startLat, startLon, false);
-  }, [fleetRoutes, computeEV02Route, selectVehicle, applySoloMode, data]);
+  }, [vehicles, depot, selectVehicle, applySoloMode]);
 
   // Update EV-02 marker from live IoT GPS
   useEffect(() => {
@@ -356,20 +269,18 @@ export function LiveFleetMapPage() {
     );
   }, [data]);
 
-  // Redraw EV-02 route after automatic recalculation
+  // Draw / refresh EV-02 polyline whenever the shared routePath updates.
   useEffect(() => {
-    const was = prevIsRecalcRef.current;
-    prevIsRecalcRef.current = isRecalculating;
-    if (!was || isRecalculating) return;
-    computeEV02Route(data?.lat ?? DEPOT_LAT, data?.lon ?? DEPOT_LON, true);
-  }, [isRecalculating, data, computeEV02Route]);
-
-  // Manual recalc
-  useEffect(() => {
-    if (manualRecalcTick === prevManualRecalcTickRef.current) return;
-    prevManualRecalcTickRef.current = manualRecalcTick;
-    computeEV02Route(data?.lat ?? DEPOT_LAT, data?.lon ?? DEPOT_LON, true);
-  }, [manualRecalcTick, data, computeEV02Route]);
+    if (!routePath || !mapRef.current) return;
+    const prev = routePolylineRef.current;
+    if (prev) { prev.setStyle({ opacity: 0 }); setTimeout(() => prev.remove(), 500); }
+    routePolylineRef.current = L.polyline(routePath, {
+      color: hasRecalculated ? '#f59e0b' : '#1d4ed8',
+      weight: 5, opacity: 0.9,
+      dashArray: hasRecalculated ? '10 8' : undefined,
+      lineJoin: 'round', lineCap: 'round',
+    }).addTo(mapRef.current);
+  }, [routePath, hasRecalculated]);
 
   const reliabilityColor =
     systemReliability >= 97 ? 'bg-green-100 text-green-700' :
@@ -424,11 +335,11 @@ export function LiveFleetMapPage() {
           <Satellite className="w-3.5 h-3.5" />
           <span>{data?.satellites ?? '—'} sats</span>
         </div>
-        {fleetRoutes && (
+        {source && depot && (
           <><div className="h-4 w-px bg-gray-300" />
           <span className="text-xs text-gray-500">
-            <span className="font-medium text-gray-800">{fleetRoutes.source}</span>
-            {' · '}{fleetRoutes.vehicles.filter(v => !v.idle).length} active · {fleetRoutes.depot.name}
+            <span className="font-medium text-gray-800">{source}</span>
+            {' · '}{activeVehiclesCount} active · {depot.name}
           </span></>
         )}
         <button
@@ -438,7 +349,7 @@ export function LiveFleetMapPage() {
           <Zap className="w-3 h-3" /> Track EV-02
         </button>
         <button
-          onClick={() => triggerManualRecalc()}
+          onClick={() => recalculate(true)}
           disabled={isRouting}
           className="px-2 py-1 text-xs bg-blue-50 border border-blue-300 text-blue-700 rounded hover:bg-blue-100 disabled:opacity-60 transition-colors flex items-center gap-1"
         >
@@ -472,7 +383,7 @@ export function LiveFleetMapPage() {
               ⚡ {t('iot.recalculating')}
             </div>
           )}
-          {routesLoading && (
+          {isLoadingFleet && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white border border-gray-200 shadow px-3 py-1.5 rounded text-xs text-gray-600 flex items-center gap-2" style={{ zIndex: 1000 }}>
               <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
               Loading Riyadh routes from MongoDB…
@@ -601,7 +512,7 @@ export function LiveFleetMapPage() {
           <div className="p-4 flex-1">
             <h3 className="text-sm font-semibold text-gray-900 mb-1">{t('home.fleetStatus')}</h3>
             <p className="text-xs text-gray-400 mb-3">Click a vehicle to show its route only</p>
-            {routesLoading ? (
+            {isLoadingFleet ? (
               <div className="space-y-2">
                 <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" />
               </div>
@@ -638,7 +549,7 @@ export function LiveFleetMapPage() {
                   }
                 </button>
 
-                {fleetRoutes?.vehicles.map((v, idx) => {
+                {vehicles?.map((v, idx) => {
                   const driverName = DRIVER_NAMES[idx] ?? 'Driver';
                   const isSelected = selectedVehicleId === v.id;
                   const typeIcon = v.vehicle_type === 'EV'

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { useIoTDevice } from '@/app/hooks/useIoTDevice';
 import { useDisruptionDetector, Disruption } from '@/app/hooks/useDisruptionDetector';
 import { IoTPayload } from '@/app/simulation/mockIoTDevice';
@@ -17,9 +17,6 @@ interface IoTContextType {
 
   hasRecalculated: boolean;
   setHasRecalculated: (v: boolean) => void;
-
-  manualRecalcTick: number;
-  triggerManualRecalc: () => void;
 }
 
 const IoTContext = createContext<IoTContextType | undefined>(undefined);
@@ -41,11 +38,6 @@ export function IoTProvider({ children }: { children: React.ReactNode }) {
   } = useDisruptionDetector(data);
 
   const [hasRecalculated, setHasRecalculated] = useState<boolean>(false);
-  const [manualRecalcTick, setManualRecalcTick] = useState<number>(0);
-
-  const triggerManualRecalc = useCallback(() => {
-    setManualRecalcTick(t => t + 1);
-  }, []);
 
   const value: IoTContextType = {
     iotData: data,
@@ -61,9 +53,6 @@ export function IoTProvider({ children }: { children: React.ReactNode }) {
 
     hasRecalculated,
     setHasRecalculated,
-
-    manualRecalcTick,
-    triggerManualRecalc,
   };
 
   return <IoTContext.Provider value={value}>{children}</IoTContext.Provider>;

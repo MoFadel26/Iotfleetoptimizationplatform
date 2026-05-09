@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { toast } from 'sonner';
 import { MapPin, CheckCircle2, Clock, AlertTriangle, Package, Inbox } from 'lucide-react';
 import { useLanguage } from '@/app/i18n/LanguageContext';
 import { useIoT } from '@/app/context/IoTContext';
+import { useRoute, type StopStatus } from '@/app/context/RouteContext';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
 } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { EmptyState } from '@/app/components/ui/EmptyState';
-import { fetchStreetRoute, fetchAlternateStreetRoute, type LatLng } from '@/app/utils/streetRouting';
 import {
   buildCompletedStopIcon,
   buildCurrentStopIcon,
@@ -23,31 +23,10 @@ L.Icon.Default.mergeOptions({
   shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href,
 });
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type StopStatus = 'completed' | 'current' | 'upcoming' | 'final';
-
-interface RouteStop {
-  id: number;
-  name: string;
-  lat: number;
-  lon: number;
-  status: StopStatus;
-}
-
-interface FleetRouteResponse {
-  depot: { name: string; lat: number; lon: number };
-  vehicles: Array<{
-    id: string;
-    name: string;
-    vehicle_type: string;
-    stops: RouteStop[];
-    distance_km: number;
-    idle: boolean;
-  }>;
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const FALLBACK_DEPOT_LAT = 24.7136;
+const FALLBACK_DEPOT_LON = 46.6753;
 
 function motionArrow(motion: string): string {
   if (motion === 'ACCELERATING') return '↑';
@@ -66,50 +45,30 @@ export function RouteNavigationPage() {
     isRecalculating,
     recalcTimeMs,
     hasRecalculated,
-    setHasRecalculated,
   } = useIoT();
+  const {
+    activeStops,
+    depot,
+    routePath,
+    isRouting,
+    isLoadingFleet,
+  } = useRoute();
+
+  const stops = activeStops ?? [];
+  const depotName = depot?.name ?? 'Depot';
+  const depotLat = depot?.lat ?? FALLBACK_DEPOT_LAT;
+  const depotLon = depot?.lon ?? FALLBACK_DEPOT_LON;
 
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
   const [deliveredIds, setDeliveredIds] = useState<Set<number>>(new Set());
   const [delayDialogOpen, setDelayDialogOpen] = useState(false);
   const [delayReason, setDelayReason] = useState('traffic');
-  const [stops, setStops] = useState<RouteStop[]>([]);
-  const [depotName, setDepotName] = useState('Depot');
-  const [depotLat, setDepotLat] = useState(24.7136);
-  const [depotLon, setDepotLon] = useState(46.6753);
-  const [routesLoading, setRoutesLoading] = useState(true);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const vehicleMarkerRef = useRef<L.CircleMarker | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const stopMarkersRef = useRef<L.Marker[]>([]);
-  const prevPathRef = useRef<LatLng[] | null>(null);
-  const prevIsRecalcRef = useRef(false);
-  const routingTokenRef = useRef(0);
-  const activeStopsRef = useRef<RouteStop[]>([]);
-
-  // Fetch EV-02's route from MongoDB via Flask
-  useEffect(() => {
-    fetch('/optimizer/fleet-routes')
-      .then(r => r.json())
-      .then((envelope) => {
-        if (!envelope?.success) {
-          throw new Error(envelope?.error?.message ?? 'fleet-routes failed');
-        }
-        const d = envelope.data as FleetRouteResponse;
-        const activeVehicle = d.vehicles.find(v => !v.idle);
-        if (activeVehicle) {
-          setStops(activeVehicle.stops);
-          activeStopsRef.current = activeVehicle.stops;
-        }
-        setDepotName(d.depot.name);
-        setDepotLat(d.depot.lat);
-        setDepotLon(d.depot.lon);
-      })
-      .catch(() => {})
-      .finally(() => setRoutesLoading(false));
-  }, []);
 
   const currentStop = stops[currentStopIndex] ?? null;
 
@@ -125,33 +84,7 @@ export function RouteNavigationPage() {
     toast.success(t('nav2.delayReportedToast'));
   };
 
-  const computeRoute = useCallback(async (lat: number, lon: number, asRecalc: boolean) => {
-    if (!mapRef.current) return;
-    const token = ++routingTokenRef.current;
-    const remaining = activeStopsRef.current.filter(s => !deliveredIds.has(s.id));
-    const waypoints: LatLng[] = [[lat, lon], ...remaining.map(s => [s.lat, s.lon] as LatLng)];
-
-    const path = asRecalc
-      ? await fetchAlternateStreetRoute(waypoints, prevPathRef.current, 5)
-      : await fetchStreetRoute(waypoints);
-
-    if (token !== routingTokenRef.current || !mapRef.current) return;
-
-    const prev = routePolylineRef.current;
-    if (prev) { prev.setStyle({ opacity: 0 }); setTimeout(() => prev.remove(), 500); }
-
-    routePolylineRef.current = L.polyline(path, {
-      color: asRecalc ? '#f59e0b' : '#2563eb',
-      weight: 4, opacity: 0.9,
-      dashArray: asRecalc ? '10 8' : undefined,
-      lineJoin: 'round', lineCap: 'round',
-    }).addTo(mapRef.current);
-
-    prevPathRef.current = path;
-    if (asRecalc) setHasRecalculated(true);
-  }, [setHasRecalculated, deliveredIds]);
-
-  // Init map
+  // Init map once
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
     const map = L.map(mapContainerRef.current, { zoomControl: false })
@@ -173,16 +106,14 @@ export function RouteNavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Draw stop markers and route once stops are loaded
+  // Draw stop markers whenever the active stops change
   useEffect(() => {
     if (!mapRef.current || stops.length === 0) return;
     const map = mapRef.current;
 
-    // Clear old markers
     stopMarkersRef.current.forEach(m => m.remove());
     stopMarkersRef.current = [];
 
-    // Draw stop markers
     let upcomingCount = 0;
     stops.forEach(stop => {
       const label = stop.status === 'upcoming' ? ++upcomingCount : 0;
@@ -196,14 +127,20 @@ export function RouteNavigationPage() {
       }).addTo(map).bindTooltip(stop.name, { direction: 'top', offset: [0, -8] });
       stopMarkersRef.current.push(marker);
     });
-
-    computeRoute(
-      data?.lat ?? depotLat,
-      data?.lon ?? depotLon,
-      false
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stops]);
+
+  // Draw / refresh polyline whenever the shared routePath updates
+  useEffect(() => {
+    if (!routePath || !mapRef.current) return;
+    const prev = routePolylineRef.current;
+    if (prev) { prev.setStyle({ opacity: 0 }); setTimeout(() => prev.remove(), 500); }
+    routePolylineRef.current = L.polyline(routePath, {
+      color: hasRecalculated ? '#f59e0b' : '#2563eb',
+      weight: 4, opacity: 0.9,
+      dashArray: hasRecalculated ? '10 8' : undefined,
+      lineJoin: 'round', lineCap: 'round',
+    }).addTo(mapRef.current);
+  }, [routePath, hasRecalculated]);
 
   // Follow vehicle
   useEffect(() => {
@@ -211,14 +148,6 @@ export function RouteNavigationPage() {
     vehicleMarkerRef.current.setLatLng([data.lat, data.lon]);
     mapRef.current.setView([data.lat, data.lon], undefined, { animate: true });
   }, [data]);
-
-  // Auto recalc
-  useEffect(() => {
-    const was = prevIsRecalcRef.current;
-    prevIsRecalcRef.current = isRecalculating;
-    if (!was || isRecalculating) return;
-    computeRoute(data?.lat ?? depotLat, data?.lon ?? depotLon, true);
-  }, [isRecalculating, data, computeRoute, depotLat, depotLon]);
 
   const speedColor = !data ? 'text-gray-500' :
     data.speed > 90 ? 'text-red-600' :
@@ -243,7 +172,7 @@ export function RouteNavigationPage() {
       <div className="relative isolate flex-shrink-0 h-[240px] landscape:h-[180px]">
         <div ref={mapContainerRef} className="absolute inset-0" />
 
-        {routesLoading && (
+        {(isLoadingFleet || isRouting) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white border border-gray-200 shadow px-3 py-1 rounded text-xs text-gray-600 flex items-center gap-2" style={{ zIndex: 1000 }}>
             <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             Loading Riyadh route…
